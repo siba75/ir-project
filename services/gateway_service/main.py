@@ -3,20 +3,23 @@ from pydantic import BaseModel
 import httpx
 import re
 
+
 app = FastAPI(
     title="IR Gateway Service",
     description="Central gateway for the complete IR pipeline",
-    version="1.3.0"
+    version="2.0.0"
 )
 
 REFINEMENT_SERVICE_URL = "http://127.0.0.1:8005/refine"
+
 TFIDF_SEARCH_URL = "http://127.0.0.1:8003/search/dataset/tfidf"
 BM25_SEARCH_URL = "http://127.0.0.1:8003/search/dataset/bm25"
 SEMANTIC_SEARCH_URL = "http://127.0.0.1:8003/search/semantic"
 HYBRID_PARALLEL_SEARCH_URL = "http://127.0.0.1:8003/search/hybrid"
 HYBRID_SERIAL_SEARCH_URL = "http://127.0.0.1:8003/search/hybrid/serial"
 
-SUPPORTED_DATASETS = ["quora",]
+SUPPORTED_DATASETS = ["quora"]
+
 SUPPORTED_RETRIEVAL_MODES = [
     "tfidf",
     "bm25",
@@ -30,7 +33,7 @@ class FullSearchRequest(BaseModel):
     query: str
     top_k: int = 5
 
-    dataset: str = "cranfield"
+    dataset: str = "quora"
     retrieval_mode: str = "hybrid_parallel"
 
     bm25_weight: float = 0.4
@@ -42,6 +45,7 @@ class FullSearchRequest(BaseModel):
     remove_stopwords: bool = True
     use_stemming: bool = False
     use_expansion: bool = True
+
     use_personalization: bool = False
     user_history: list[str] = []
 
@@ -58,7 +62,9 @@ def build_personalized_query(refined_query: str, user_history: list[str]):
     if not unique_terms:
         return refined_query, []
 
-    return f"{refined_query} {' '.join(unique_terms)}", unique_terms
+    personalized_query = f"{refined_query} {' '.join(unique_terms)}"
+
+    return personalized_query, unique_terms
 
 
 @app.get("/")
@@ -66,20 +72,23 @@ def home():
     return {
         "service": "Gateway Service",
         "status": "running",
-        "version": "1.3.0",
+        "version": "2.0.0",
         "available_datasets": SUPPORTED_DATASETS,
         "available_retrieval_modes": SUPPORTED_RETRIEVAL_MODES,
         "pipeline": [
             "query_refinement",
-            "multi_dataset_retrieval",
+            "retrieval",
             "ranking"
-        ]
+        ],
+        "dataset": {
+            "name": "quora",
+            "source": "beir/quora/test"
+        }
     }
 
 
 @app.post("/search/full")
 async def full_search(request: FullSearchRequest):
-
     request.dataset = request.dataset.lower().strip()
     request.retrieval_mode = request.retrieval_mode.lower().strip()
 
@@ -137,7 +146,6 @@ async def full_search(request: FullSearchRequest):
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-
         try:
             refinement_response = await client.post(
                 REFINEMENT_SERVICE_URL,
@@ -153,6 +161,7 @@ async def full_search(request: FullSearchRequest):
 
         refinement_data = refinement_response.json()
         refined_query = refinement_data["refined_query"]
+
         personalization_terms = []
 
         if request.use_personalization:
@@ -230,8 +239,7 @@ async def full_search(request: FullSearchRequest):
         "pipeline": {
             "refinement_enabled": True,
             "retrieval_enabled": True,
-            "ranking_enabled": True,
-            "multi_dataset_enabled": True
+            "ranking_enabled": True
         },
         "additional_features": {
             "vector_store_faiss": True,

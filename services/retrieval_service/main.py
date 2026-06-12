@@ -10,13 +10,12 @@ import re
 
 from dataset_manager import (
     load_dataset_resources,
-    get_embedding_model,
     validate_dataset
 )
 
 app = FastAPI(
     title="IR Retrieval Service",
-    description="Multi-dataset retrieval service for IR search and ranking",
+    description="Quora retrieval service for IR search and ranking",
     version="2.0.0"
 )
 
@@ -40,7 +39,7 @@ class BM25SearchRequest(SearchRequest):
 class DatasetBM25SearchRequest(BaseModel):
     query: str
     top_k: int = 10
-    dataset: str = "cranfield"
+    dataset: str = "quora"
     k1: float = 1.5
     b: float = 0.75
 
@@ -48,13 +47,13 @@ class DatasetBM25SearchRequest(BaseModel):
 class IndexedSearchRequest(BaseModel):
     query: str
     top_k: int = 10
-    dataset: str = "cranfield"
+    dataset: str = "quora"
 
 
 class SemanticSearchRequest(BaseModel):
     query: str
     top_k: int = 10
-    dataset: str = "cranfield"
+    dataset: str = "quora"
 
 
 class HybridSearchRequest(BaseModel):
@@ -62,14 +61,14 @@ class HybridSearchRequest(BaseModel):
     top_k: int = 10
     bm25_weight: float = 0.4
     semantic_weight: float = 0.6
-    dataset: str = "cranfield"
+    dataset: str = "quora"
 
 
 class HybridSerialSearchRequest(BaseModel):
     query: str
     top_k: int = 10
     initial_k: int = 50
-    dataset: str = "cranfield"
+    dataset: str = "quora"
 
 
 def preprocess(text: str) -> list[str]:
@@ -121,32 +120,16 @@ def score_documents(query_tokens: list[str], inverted_index, documents_store):
 
 
 def lexical_scores(query_tokens, resources):
-    dataset_type = resources["type"]
+    bm25 = resources["bm25"]
+    doc_ids = resources["doc_ids"]
 
-    if dataset_type == "cranfield":
-        inverted_index = resources["inverted_index"]
-        scores = defaultdict(float)
+    raw_scores = bm25.get_scores(query_tokens)
 
-        for term in query_tokens:
-            if term in inverted_index:
-                for doc_id, frequency in inverted_index[term].items():
-                    scores[doc_id] += frequency
-
-        return dict(scores)
-
-    if dataset_type in ["scifact", "generic"]:
-        bm25 = resources["bm25"]
-        doc_ids = resources["doc_ids"]
-
-        raw_scores = bm25.get_scores(query_tokens)
-
-        return {
-            str(doc_ids[index]): float(score)
-            for index, score in enumerate(raw_scores)
-            if score > 0
-        }
-
-    return {}
+    return {
+        str(doc_ids[index]): float(score)
+        for index, score in enumerate(raw_scores)
+        if score > 0
+    }
 
 
 def normalize_scores(scores: dict):
@@ -173,12 +156,10 @@ def semantic_scores(query: str, resources, search_size: int):
         query_embedding = metadata["svd"].transform(query_tfidf)
         query_embedding = normalize(query_embedding).astype("float32")
     else:
-        model = get_embedding_model()
-        query_embedding = model.encode(
-            [query],
-            convert_to_numpy=True,
-            normalize_embeddings=True
-        ).astype("float32")
+        raise HTTPException(
+            status_code=500,
+            detail="Unsupported vector method. Expected LSA TF-IDF SVD vectors."
+        )
 
     scores_raw, indices = faiss_index.search(
         query_embedding,
@@ -192,13 +173,7 @@ def semantic_scores(query: str, resources, search_size: int):
             continue
 
         doc_id = str(metadata["doc_ids"][doc_index])
-
-        if resources["type"] == "scifact" and metadata.get("vector_method") != "lsa_tfidf_svd":
-            converted_score = 1 / (1 + float(score))
-        else:
-            converted_score = float(score)
-
-        scores[doc_id] = converted_score
+        scores[doc_id] = float(score)
 
     return scores
 
@@ -277,36 +252,21 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
     if not query_tokens:
         raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
 
-    inverted_index = resources.get("inverted_index", {})
-    total_documents = resources["total_documents"]
+    bm25 = resources["bm25"]
+    doc_ids = resources["doc_ids"]
     scores = defaultdict(float)
 
-    for term in query_tokens:
-        postings = inverted_index.get(term, {})
+    for doc_index, term_frequencies in enumerate(bm25.doc_freqs):
+        score = 0.0
 
-        if not postings:
-            continue
+        for term in query_tokens:
+            term_frequency = term_frequencies.get(term, 0)
 
-        idf = math.log((total_documents + 1) / (len(postings) + 1)) + 1
+            if term_frequency:
+                score += float(term_frequency) * float(bm25.idf.get(term, 0.0))
 
-        for doc_id, term_frequency in postings.items():
-            scores[doc_id] += float(term_frequency) * idf
-
-    if not scores and "bm25" in resources:
-        bm25 = resources["bm25"]
-        doc_ids = resources["doc_ids"]
-
-        for doc_index, term_frequencies in enumerate(bm25.doc_freqs):
-            score = 0.0
-
-            for term in query_tokens:
-                term_frequency = term_frequencies.get(term, 0)
-
-                if term_frequency:
-                    score += float(term_frequency) * float(bm25.idf.get(term, 0.0))
-
-            if score > 0:
-                scores[str(doc_ids[doc_index])] = score
+        if score > 0:
+            scores[str(doc_ids[doc_index])] = score
 
     ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
 
@@ -323,9 +283,9 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
     return {
         "query": query,
         "processed_query": query_tokens,
-        "model": "Precomputed TF-IDF over Inverted Index",
+        "model": "Precomputed TF-IDF over BM25 term statistics",
         "dataset": dataset,
-        "total_documents": total_documents,
+        "total_documents": resources["total_documents"],
         "returned_results": len(results),
         "results": results
     }
@@ -339,6 +299,7 @@ def dataset_bm25_search(query: str, top_k: int, dataset: str, k1: float, b: floa
 
     resources = load_dataset_resources(dataset)
     doc_ids, documents = get_dataset_documents(resources)
+
     wrapped_documents = [
         Document(doc_id=doc_id, text=text)
         for doc_id, text in zip(doc_ids, documents)
@@ -372,7 +333,7 @@ def semantic_search(query: str, top_k: int, dataset: str):
 
     return {
         "query": query,
-        "model": "Semantic Search using Sentence Transformers + FAISS",
+        "model": "Semantic Search using FAISS Vector Index",
         "dataset": dataset,
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
@@ -626,9 +587,8 @@ def home():
         "service": "Retrieval Service",
         "status": "running",
         "version": "2.0.0",
-        "supported_datasets": [
-            "quora",
-        ],
+        "dataset": "quora",
+        "source": "beir/quora/test",
         "available_models": [
             "term_frequency_baseline",
             "tfidf_vsm",
@@ -664,7 +624,13 @@ def search_tfidf(request: SearchRequest):
 
 @app.post("/search/bm25")
 def search_bm25(request: BM25SearchRequest):
-    return bm25_search(request.query, request.documents, request.top_k, request.k1, request.b)
+    return bm25_search(
+        request.query,
+        request.documents,
+        request.top_k,
+        request.k1,
+        request.b
+    )
 
 
 @app.post("/search/dataset/tfidf")
