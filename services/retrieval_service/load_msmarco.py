@@ -1,8 +1,6 @@
 import ir_datasets
 import json
 from pathlib import Path
-
-DATASET_NAME = "msmarco-passage/train"
 MAX_DOCS = 200000
 MAX_QUERIES = 1000
 
@@ -17,7 +15,6 @@ QRELS_PATH = OUTPUT_DIR / "qrels.json"
 
 def main():
     print("Loading MS MARCO Passage dataset...")
-    dataset = ir_datasets.load(DATASET_NAME)
 
     documents = {}
     queries = {}

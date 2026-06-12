@@ -3,11 +3,9 @@ import math
 import requests
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-SCIFACT_DIR = BASE_DIR / "datasets" / "scifact"
 
-QUERIES_PATH = SCIFACT_DIR / "queries.json"
-QRELS_PATH = SCIFACT_DIR / "qrels.json"
+
+
 
 GATEWAY_URL = "http://127.0.0.1:8006/search/full"
 
@@ -101,8 +99,6 @@ def evaluate_mode(mode):
     map_scores = []
     ndcg_scores = []
 
-    print(f"\nEvaluating SciFact - {mode}")
-    print("=" * 60)
 
     for counter, query_id in enumerate(query_ids, start=1):
         query_text = queries.get(query_id)
@@ -114,7 +110,6 @@ def evaluate_mode(mode):
         payload = {
             "query": query_text,
             "top_k": TOP_K,
-            "dataset": "scifact",
             "retrieval_mode": mode,
             "bm25_weight": 0.4,
             "semantic_weight": 0.6,
@@ -163,7 +158,6 @@ def evaluate_mode(mode):
     total = len(precision_scores)
 
     results = {
-        "dataset": "scifact",
         "retrieval_mode": mode,
         "evaluated_queries": total,
         f"mean_precision@{TOP_K}": round(sum(precision_scores) / total, 4) if total else 0,
@@ -187,7 +181,6 @@ def main():
         for mode in EVALUATION_MODES
     }
 
-    output_path = BASE_DIR / "reports" / "scifact_evaluation_results.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as file:
