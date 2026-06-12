@@ -5,23 +5,50 @@ import re
 import json
 import time
 from datetime import datetime
+from pathlib import Path
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 GATEWAY_URL = "http://127.0.0.1:8006/search/full"
 
 SERVICE_URLS = {
+    "Preprocessing Service": "http://127.0.0.1:8001/",
+    "Indexing Service": "http://127.0.0.1:8002/",
     "Gateway Service": "http://127.0.0.1:8006/",
     "Retrieval Service": "http://127.0.0.1:8003/",
+    "Evaluation Service": "http://127.0.0.1:8004/",
     "Refinement Service": "http://127.0.0.1:8005/"
 }
 
-EVALUATION_RESULTS = {
-    "Evaluated Queries": 50,
-    "Mean Precision@10": 0.1940,
-    "Mean Recall@10": 0.3364,
-    "MRR": 0.4740,
-    "MAP": 0.1869
-}
+BASE_DIR = Path(__file__).resolve().parents[2]
+REPORTS_DIR = BASE_DIR / "reports"
 
+
+def load_evaluation_results():
+    results = {}
+
+    for report_path in REPORTS_DIR.glob("*_evaluation_results.json"):
+        dataset_name = report_path.name.replace("_evaluation_results.json", "")
+
+        with open(report_path, "r", encoding="utf-8") as file:
+            report_data = json.load(file)
+
+        results[dataset_name] = {
+            mode: {
+                "Evaluated Queries": values.get("evaluated_queries", 0),
+                "Precision@10": values.get("mean_precision@10", 0),
+                "Recall@10": values.get("mean_recall@10", 0),
+                "MRR": values.get("mrr", 0),
+                "MAP": values.get("map", 0),
+                "nDCG@10": values.get("ndcg@10", 0)
+            }
+            for mode, values in report_data.items()
+        }
+
+    return results
+
+
+EVALUATION_RESULTS = load_evaluation_results()
 st.set_page_config(
     page_title="IR Search Engine",
     page_icon="🔎",
@@ -220,6 +247,35 @@ def results_to_dataframe(results):
     ])
 
 
+def cluster_results(results):
+    texts = [item.get("text", "") for item in results]
+
+    if len(texts) < 2:
+        return pd.DataFrame()
+
+    cluster_count = min(3, len(texts))
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=500)
+    matrix = vectorizer.fit_transform(texts)
+
+    model = KMeans(
+        n_clusters=cluster_count,
+        random_state=42,
+        n_init=10
+    )
+
+    labels = model.fit_predict(matrix)
+
+    return pd.DataFrame([
+        {
+            "Cluster": int(label) + 1,
+            "Rank": item.get("rank"),
+            "Document": item.get("doc_id"),
+            "Score": item.get("score", 0)
+        }
+        for item, label in zip(results, labels)
+    ])
+
+
 with st.sidebar:
     st.header("⚙️ Search Settings")
 
@@ -231,34 +287,51 @@ with st.sidebar:
     dataset_label = st.selectbox(
         "Dataset",
         [
-            "Cranfield",
-            "SciFact"
+            "Quora",
         ]
     )
 
-    dataset = dataset_label.lower()
+    dataset_mapping = {
+    "Quora": "quora",
+}
+
+    dataset = dataset_mapping[dataset_label]
 
     retrieval_mode_label = st.selectbox(
         "Retrieval Mode",
         [
+            "TF-IDF",
+            "BM25",
+            "Semantic",
             "Hybrid Parallel",
             "Hybrid Serial"
         ]
     )
 
-    retrieval_mode = (
-        "hybrid_parallel"
-        if retrieval_mode_label == "Hybrid Parallel"
-        else "hybrid_serial"
-    )
+    retrieval_mode_options = {
+        "TF-IDF": "tfidf",
+        "BM25": "bm25",
+        "Semantic": "semantic",
+        "Hybrid Parallel": "hybrid_parallel",
+        "Hybrid Serial": "hybrid_serial"
+    }
+
+    retrieval_mode = retrieval_mode_options[retrieval_mode_label]
 
     top_k = st.slider("Number of Results", 1, 20, 5)
+
+    if retrieval_mode in ["bm25", "hybrid_parallel", "hybrid_serial"]:
+        bm25_k1 = st.slider("BM25 k1", 0.1, 3.0, 1.5, 0.1)
+        bm25_b = st.slider("BM25 b", 0.0, 1.0, 0.75, 0.05)
+    else:
+        bm25_k1 = 1.5
+        bm25_b = 0.75
 
     if retrieval_mode == "hybrid_parallel":
         bm25_weight = st.slider("BM25 Weight", 0.0, 1.0, 0.4, 0.05)
         semantic_weight = st.slider("Semantic Weight", 0.0, 1.0, 0.6, 0.05)
         initial_k = 50
-    else:
+    elif retrieval_mode == "hybrid_serial":
         bm25_weight = 0.4
         semantic_weight = 0.6
 
@@ -273,12 +346,17 @@ with st.sidebar:
         st.caption(
             "Serial mode: BM25 retrieves initial candidates, then Semantic Search re-ranks them."
         )
+    else:
+        bm25_weight = 0.4
+        semantic_weight = 0.6
+        initial_k = 50
 
     st.divider()
 
     remove_stopwords = st.checkbox("Remove Stopwords", value=True)
     use_expansion = st.checkbox("Query Expansion", value=True)
     use_stemming = st.checkbox("Stemming", value=False)
+    use_personalization = st.checkbox("Personalization", value=False)
 
     st.divider()
 
@@ -344,10 +422,17 @@ if search_clicked:
             "retrieval_mode": retrieval_mode,
             "bm25_weight": bm25_weight,
             "semantic_weight": semantic_weight,
+            "bm25_k1": bm25_k1,
+            "bm25_b": bm25_b,
             "initial_k": initial_k,
             "remove_stopwords": remove_stopwords,
             "use_stemming": use_stemming,
-            "use_expansion": use_expansion
+            "use_expansion": use_expansion,
+            "use_personalization": use_personalization,
+            "user_history": [
+                item["query"]
+                for item in st.session_state.search_history[-5:]
+            ]
         }
 
         with st.spinner("Running full IR pipeline..."):
@@ -488,6 +573,19 @@ with tab_analytics:
         ranking_df = df[["Rank", "Final Score"]].set_index("Rank")
         st.line_chart(ranking_df)
 
+        st.subheader("Result Clustering")
+
+        try:
+            cluster_df = cluster_results(results)
+
+            if cluster_df.empty:
+                st.info("At least two results are needed for clustering.")
+            else:
+                st.dataframe(cluster_df, use_container_width=True)
+                st.bar_chart(cluster_df.groupby("Cluster")["Document"].count())
+        except Exception as error:
+            st.warning(f"Clustering unavailable for these results: {error}")
+
         avg_score = df["Final Score"].mean()
         max_score = df["Final Score"].max()
         min_score = df["Final Score"].min()
@@ -501,39 +599,77 @@ with tab_analytics:
     else:
         st.info("Run a search to view analytics.")
 
-
 with tab_evaluation:
     st.subheader("Benchmark Evaluation Dashboard")
 
-    st.caption(
-        "Current benchmark summary is based on Cranfield. SciFact retrieval is now supported and ready for separate evaluation."
-    )
+    if not EVALUATION_RESULTS:
+        st.info("No evaluation reports found. Run the evaluation scripts first.")
+    else:
+        selected_eval_dataset = st.selectbox(
+            "Evaluation Dataset",
+            list(EVALUATION_RESULTS.keys())
+        )
 
-    e1, e2, e3, e4, e5 = st.columns(5)
+        selected_eval_mode = st.selectbox(
+            "Evaluation Retrieval Mode",
+            list(EVALUATION_RESULTS[selected_eval_dataset].keys())
+        )
 
-    e1.metric("Queries", EVALUATION_RESULTS["Evaluated Queries"])
-    e2.metric("Precision@10", EVALUATION_RESULTS["Mean Precision@10"])
-    e3.metric("Recall@10", EVALUATION_RESULTS["Mean Recall@10"])
-    e4.metric("MRR", EVALUATION_RESULTS["MRR"])
-    e5.metric("MAP", EVALUATION_RESULTS["MAP"])
+        current_eval = EVALUATION_RESULTS[selected_eval_dataset][selected_eval_mode]
 
-    evaluation_df = pd.DataFrame([
-        {"Metric": "Precision@10", "Score": EVALUATION_RESULTS["Mean Precision@10"]},
-        {"Metric": "Recall@10", "Score": EVALUATION_RESULTS["Mean Recall@10"]},
-        {"Metric": "MRR", "Score": EVALUATION_RESULTS["MRR"]},
-        {"Metric": "MAP", "Score": EVALUATION_RESULTS["MAP"]}
-    ])
+        st.caption(
+            "Evaluation is computed using benchmark queries and relevance judgments."
+        )
 
-    st.dataframe(evaluation_df, use_container_width=True)
-    st.bar_chart(evaluation_df.set_index("Metric"))
+        e1, e2, e3 = st.columns(3)
+        e4, e5, e6 = st.columns(3)
+        st.info(f"Showing results for: {selected_eval_dataset} / {selected_eval_mode}")
+        e1.metric("Queries", current_eval["Evaluated Queries"])
+        e2.metric("Precision@10", f"{current_eval['Precision@10']:.4f}")
+        e3.metric("Recall@10", f"{current_eval['Recall@10']:.4f}")
+        e4.metric("MRR", f"{current_eval['MRR']:.4f}")
+        e5.metric("MAP", f"{current_eval['MAP']:.4f}")
+        e6.metric("nDCG@10", f"{current_eval['nDCG@10']:.4f}")
 
-    st.markdown("""
-    - **Precision@10**: نسبة الوثائق الصحيحة ضمن أول 10 نتائج.
-    - **Recall@10**: نسبة الوثائق الصحيحة التي استطاع النظام استرجاعها.
-    - **MRR**: يقيس ترتيب أول وثيقة صحيحة.
-    - **MAP**: يقيس جودة الترتيب عبر جميع الاستعلامات.
-    """)
+        evaluation_df = pd.DataFrame([
+            {"Metric": "Precision@10", "Score": current_eval["Precision@10"]},
+            {"Metric": "Recall@10", "Score": current_eval["Recall@10"]},
+            {"Metric": "MRR", "Score": current_eval["MRR"]},
+            {"Metric": "MAP", "Score": current_eval["MAP"]},
+            {"Metric": "nDCG@10", "Score": current_eval["nDCG@10"]}
+        ])
 
+        st.subheader("Evaluation Scores")
+        st.dataframe(evaluation_df, use_container_width=True)
+        st.bar_chart(evaluation_df.set_index("Metric"))
+
+        if len(EVALUATION_RESULTS[selected_eval_dataset]) > 1:
+            st.subheader(f"{selected_eval_dataset.capitalize()} Model Comparison")
+
+            comparison_rows = []
+
+            for mode_name, scores in EVALUATION_RESULTS[selected_eval_dataset].items():
+                comparison_rows.append({
+                    "Mode": mode_name,
+                    "Precision@10": scores["Precision@10"],
+                    "Recall@10": scores["Recall@10"],
+                    "MRR": scores["MRR"],
+                    "MAP": scores["MAP"],
+                    "nDCG@10": scores["nDCG@10"]
+                })
+
+            comparison_df = pd.DataFrame(comparison_rows)
+
+            st.dataframe(comparison_df, use_container_width=True)
+            st.bar_chart(comparison_df.set_index("Mode"))
+
+        st.markdown("""
+        - **Precision@10**: نسبة الوثائق الصحيحة ضمن أول 10 نتائج.
+        - **Recall@10**: نسبة الوثائق الصحيحة التي استطاع النظام استرجاعها.
+        - **MRR**: يقيس ترتيب أول وثيقة صحيحة.
+        - **MAP**: يقيس جودة الترتيب عبر جميع الاستعلامات.
+        - **nDCG@10**: يقيس جودة ترتيب النتائج مع مراعاة موقع الوثائق الصحيحة.
+        """)
 
 with tab_pipeline:
     st.subheader("Pipeline Details")
@@ -581,10 +717,13 @@ Ranked Results
                 "top_k": top_k,
                 "bm25_weight": bm25_weight,
                 "semantic_weight": semantic_weight,
+                "bm25_k1": bm25_k1,
+                "bm25_b": bm25_b,
                 "initial_k": initial_k,
                 "remove_stopwords": remove_stopwords,
                 "use_expansion": use_expansion,
                 "use_stemming": use_stemming,
+                "use_personalization": use_personalization,
                 "search_time_seconds": st.session_state.last_search_time
             }
         })

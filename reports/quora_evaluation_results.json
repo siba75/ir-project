@@ -1,0 +1,52 @@
+{
+  "tfidf": {
+    "dataset": "quora",
+    "retrieval_mode": "tfidf",
+    "evaluated_queries": 10,
+    "mean_precision@10": 0.02,
+    "mean_recall@10": 0.2,
+    "mrr": 0.1111,
+    "map": 0.1111,
+    "ndcg@10": 0.1301
+  },
+  "bm25": {
+    "dataset": "quora",
+    "retrieval_mode": "bm25",
+    "evaluated_queries": 10,
+    "mean_precision@10": 0.1,
+    "mean_recall@10": 0.65,
+    "mrr": 0.4787,
+    "map": 0.4283,
+    "ndcg@10": 0.4996
+  },
+  "semantic": {
+    "dataset": "quora",
+    "retrieval_mode": "semantic",
+    "evaluated_queries": 10,
+    "mean_precision@10": 0.01,
+    "mean_recall@10": 0.1,
+    "mrr": 0.0333,
+    "map": 0.0333,
+    "ndcg@10": 0.05
+  },
+  "hybrid_parallel": {
+    "dataset": "quora",
+    "retrieval_mode": "hybrid_parallel",
+    "evaluated_queries": 10,
+    "mean_precision@10": 0.03,
+    "mean_recall@10": 0.225,
+    "mrr": 0.2333,
+    "map": 0.2083,
+    "ndcg@10": 0.2195
+  },
+  "hybrid_serial": {
+    "dataset": "quora",
+    "retrieval_mode": "hybrid_serial",
+    "evaluated_queries": 10,
+    "mean_precision@10": 0.02,
+    "mean_recall@10": 0.2,
+    "mrr": 0.1333,
+    "map": 0.1333,
+    "ndcg@10": 0.15
+  }
+}

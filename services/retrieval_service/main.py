@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from collections import defaultdict, Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
 from rank_bm25 import BM25Okapi
+import math
 import re
 
 from dataset_manager import (
@@ -31,6 +33,14 @@ class SearchRequest(BaseModel):
 
 
 class BM25SearchRequest(SearchRequest):
+    k1: float = 1.5
+    b: float = 0.75
+
+
+class DatasetBM25SearchRequest(BaseModel):
+    query: str
+    top_k: int = 10
+    dataset: str = "cranfield"
     k1: float = 1.5
     b: float = 0.75
 
@@ -124,7 +134,7 @@ def lexical_scores(query_tokens, resources):
 
         return dict(scores)
 
-    if dataset_type == "scifact":
+    if dataset_type in ["scifact", "generic"]:
         bm25 = resources["bm25"]
         doc_ids = resources["doc_ids"]
 
@@ -155,15 +165,20 @@ def normalize_scores(scores: dict):
 
 
 def semantic_scores(query: str, resources, search_size: int):
-    model = get_embedding_model()
     faiss_index = resources["faiss_index"]
     metadata = resources["metadata"]
 
-    query_embedding = model.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True
-    ).astype("float32")
+    if metadata.get("vector_method") == "lsa_tfidf_svd":
+        query_tfidf = metadata["vectorizer"].transform([query])
+        query_embedding = metadata["svd"].transform(query_tfidf)
+        query_embedding = normalize(query_embedding).astype("float32")
+    else:
+        model = get_embedding_model()
+        query_embedding = model.encode(
+            [query],
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        ).astype("float32")
 
     scores_raw, indices = faiss_index.search(
         query_embedding,
@@ -178,7 +193,7 @@ def semantic_scores(query: str, resources, search_size: int):
 
         doc_id = str(metadata["doc_ids"][doc_index])
 
-        if resources["type"] == "scifact":
+        if resources["type"] == "scifact" and metadata.get("vector_method") != "lsa_tfidf_svd":
             converted_score = 1 / (1 + float(score))
         else:
             converted_score = float(score)
@@ -202,6 +217,19 @@ def get_doc_text(doc_id: str, resources):
         return metadata["documents"][position]
     except ValueError:
         return ""
+
+
+def get_dataset_documents(resources):
+    metadata = resources.get("metadata", {})
+
+    if metadata.get("documents") and metadata.get("doc_ids"):
+        return [str(item) for item in metadata["doc_ids"]], metadata["documents"]
+
+    documents_store = resources.get("documents_store", {})
+    doc_ids = list(documents_store.keys())
+    documents = [documents_store[doc_id] for doc_id in doc_ids]
+
+    return doc_ids, documents
 
 
 def indexed_search(query: str, top_k: int, dataset: str):
@@ -235,6 +263,90 @@ def indexed_search(query: str, top_k: int, dataset: str):
         "returned_results": len(results),
         "results": results
     }
+
+
+def dataset_tfidf_search(query: str, top_k: int, dataset: str):
+    dataset = validate_dataset(dataset)
+
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    resources = load_dataset_resources(dataset)
+    query_tokens = preprocess(query)
+
+    if not query_tokens:
+        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+
+    inverted_index = resources.get("inverted_index", {})
+    total_documents = resources["total_documents"]
+    scores = defaultdict(float)
+
+    for term in query_tokens:
+        postings = inverted_index.get(term, {})
+
+        if not postings:
+            continue
+
+        idf = math.log((total_documents + 1) / (len(postings) + 1)) + 1
+
+        for doc_id, term_frequency in postings.items():
+            scores[doc_id] += float(term_frequency) * idf
+
+    if not scores and "bm25" in resources:
+        bm25 = resources["bm25"]
+        doc_ids = resources["doc_ids"]
+
+        for doc_index, term_frequencies in enumerate(bm25.doc_freqs):
+            score = 0.0
+
+            for term in query_tokens:
+                term_frequency = term_frequencies.get(term, 0)
+
+                if term_frequency:
+                    score += float(term_frequency) * float(bm25.idf.get(term, 0.0))
+
+            if score > 0:
+                scores[str(doc_ids[doc_index])] = score
+
+    ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+
+    results = []
+
+    for rank, (doc_id, score) in enumerate(ranked_results[:top_k], start=1):
+        results.append({
+            "rank": rank,
+            "doc_id": doc_id,
+            "score": round(float(score), 6),
+            "text": get_doc_text(doc_id, resources)
+        })
+
+    return {
+        "query": query,
+        "processed_query": query_tokens,
+        "model": "Precomputed TF-IDF over Inverted Index",
+        "dataset": dataset,
+        "total_documents": total_documents,
+        "returned_results": len(results),
+        "results": results
+    }
+
+
+def dataset_bm25_search(query: str, top_k: int, dataset: str, k1: float, b: float):
+    dataset = validate_dataset(dataset)
+
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    resources = load_dataset_resources(dataset)
+    doc_ids, documents = get_dataset_documents(resources)
+    wrapped_documents = [
+        Document(doc_id=doc_id, text=text)
+        for doc_id, text in zip(doc_ids, documents)
+    ]
+
+    result = bm25_search(query, wrapped_documents, top_k, k1, b)
+    result["dataset"] = dataset
+    return result
 
 
 def semantic_search(query: str, top_k: int, dataset: str):
@@ -515,8 +627,7 @@ def home():
         "status": "running",
         "version": "2.0.0",
         "supported_datasets": [
-            "cranfield",
-            "scifact"
+            "quora",
         ],
         "available_models": [
             "term_frequency_baseline",
@@ -554,6 +665,26 @@ def search_tfidf(request: SearchRequest):
 @app.post("/search/bm25")
 def search_bm25(request: BM25SearchRequest):
     return bm25_search(request.query, request.documents, request.top_k, request.k1, request.b)
+
+
+@app.post("/search/dataset/tfidf")
+def search_dataset_tfidf(request: IndexedSearchRequest):
+    return dataset_tfidf_search(
+        query=request.query,
+        top_k=request.top_k,
+        dataset=request.dataset
+    )
+
+
+@app.post("/search/dataset/bm25")
+def search_dataset_bm25(request: DatasetBM25SearchRequest):
+    return dataset_bm25_search(
+        query=request.query,
+        top_k=request.top_k,
+        dataset=request.dataset,
+        k1=request.k1,
+        b=request.b
+    )
 
 
 @app.post("/search/indexed")

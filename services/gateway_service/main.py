@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
+import re
 
 app = FastAPI(
     title="IR Gateway Service",
@@ -9,11 +10,20 @@ app = FastAPI(
 )
 
 REFINEMENT_SERVICE_URL = "http://127.0.0.1:8005/refine"
+TFIDF_SEARCH_URL = "http://127.0.0.1:8003/search/dataset/tfidf"
+BM25_SEARCH_URL = "http://127.0.0.1:8003/search/dataset/bm25"
+SEMANTIC_SEARCH_URL = "http://127.0.0.1:8003/search/semantic"
 HYBRID_PARALLEL_SEARCH_URL = "http://127.0.0.1:8003/search/hybrid"
 HYBRID_SERIAL_SEARCH_URL = "http://127.0.0.1:8003/search/hybrid/serial"
 
-SUPPORTED_DATASETS = ["cranfield", "scifact"]
-SUPPORTED_RETRIEVAL_MODES = ["hybrid_parallel", "hybrid_serial"]
+SUPPORTED_DATASETS = ["quora",]
+SUPPORTED_RETRIEVAL_MODES = [
+    "tfidf",
+    "bm25",
+    "semantic",
+    "hybrid_parallel",
+    "hybrid_serial"
+]
 
 
 class FullSearchRequest(BaseModel):
@@ -25,11 +35,30 @@ class FullSearchRequest(BaseModel):
 
     bm25_weight: float = 0.4
     semantic_weight: float = 0.6
+    bm25_k1: float = 1.5
+    bm25_b: float = 0.75
     initial_k: int = 50
 
     remove_stopwords: bool = True
     use_stemming: bool = False
     use_expansion: bool = True
+    use_personalization: bool = False
+    user_history: list[str] = []
+
+
+def build_personalized_query(refined_query: str, user_history: list[str]):
+    history_terms = []
+
+    for history_query in user_history[-5:]:
+        terms = re.findall(r"[a-zA-Z0-9]+", history_query.lower())
+        history_terms.extend(term for term in terms if len(term) > 2)
+
+    unique_terms = list(dict.fromkeys(history_terms))[:8]
+
+    if not unique_terms:
+        return refined_query, []
+
+    return f"{refined_query} {' '.join(unique_terms)}", unique_terms
 
 
 @app.get("/")
@@ -81,6 +110,18 @@ async def full_search(request: FullSearchRequest):
             detail="weights must be non-negative"
         )
 
+    if request.bm25_k1 <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="bm25_k1 must be greater than 0"
+        )
+
+    if request.bm25_b < 0 or request.bm25_b > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="bm25_b must be between 0 and 1"
+        )
+
     if request.retrieval_mode == "hybrid_parallel":
         if request.bm25_weight + request.semantic_weight == 0:
             raise HTTPException(
@@ -112,8 +153,41 @@ async def full_search(request: FullSearchRequest):
 
         refinement_data = refinement_response.json()
         refined_query = refinement_data["refined_query"]
+        personalization_terms = []
 
-        if request.retrieval_mode == "hybrid_parallel":
+        if request.use_personalization:
+            refined_query, personalization_terms = build_personalized_query(
+                refined_query,
+                request.user_history
+            )
+
+        if request.retrieval_mode == "tfidf":
+            retrieval_url = TFIDF_SEARCH_URL
+            retrieval_payload = {
+                "query": refined_query,
+                "top_k": request.top_k,
+                "dataset": request.dataset
+            }
+
+        elif request.retrieval_mode == "bm25":
+            retrieval_url = BM25_SEARCH_URL
+            retrieval_payload = {
+                "query": refined_query,
+                "top_k": request.top_k,
+                "dataset": request.dataset,
+                "k1": request.bm25_k1,
+                "b": request.bm25_b
+            }
+
+        elif request.retrieval_mode == "semantic":
+            retrieval_url = SEMANTIC_SEARCH_URL
+            retrieval_payload = {
+                "query": refined_query,
+                "top_k": request.top_k,
+                "dataset": request.dataset
+            }
+
+        elif request.retrieval_mode == "hybrid_parallel":
             retrieval_url = HYBRID_PARALLEL_SEARCH_URL
             retrieval_payload = {
                 "query": refined_query,
@@ -159,15 +233,23 @@ async def full_search(request: FullSearchRequest):
             "ranking_enabled": True,
             "multi_dataset_enabled": True
         },
+        "additional_features": {
+            "vector_store_faiss": True,
+            "personalization_enabled": request.use_personalization,
+            "personalization_terms": personalization_terms
+        },
         "configuration": {
             "dataset": request.dataset,
             "top_k": request.top_k,
             "bm25_weight": request.bm25_weight,
             "semantic_weight": request.semantic_weight,
+            "bm25_k1": request.bm25_k1,
+            "bm25_b": request.bm25_b,
             "initial_k": request.initial_k,
             "remove_stopwords": request.remove_stopwords,
             "use_stemming": request.use_stemming,
-            "use_expansion": request.use_expansion
+            "use_expansion": request.use_expansion,
+            "use_personalization": request.use_personalization
         },
         "returned_results": retrieval_data.get("returned_results", 0),
         "results": retrieval_data.get("results", [])

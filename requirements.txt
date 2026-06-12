@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+httpx
+requests
+streamlit
+pandas
+scikit-learn
+rank-bm25
+sentence-transformers
+faiss-cpu
+ir-datasets
+datasets
+nltk
+numpy
+pytest
