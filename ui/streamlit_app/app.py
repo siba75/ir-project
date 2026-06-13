@@ -515,10 +515,11 @@ with tab_results:
         else:
             col3.metric("Search Time", "N/A")
 
-        mode_col1, mode_col2, mode_col3 = st.columns(3)
+        mode_col1, mode_col2, mode_col3, mode_col4 = st.columns(4)
         mode_col1.metric("Dataset", data.get("dataset", "N/A"))
         mode_col2.metric("Retrieval Mode", data.get("retrieval_mode", "N/A"))
         mode_col3.metric("Retrieval Model", data.get("retrieval_model", "N/A"))
+        mode_col4.metric("Vector Method", data.get("vector_method", "N/A"))
 
         st.subheader("Top Matching Terms")
 
@@ -738,6 +739,7 @@ Ranked Results
             "dataset": data.get("dataset"),
             "retrieval_mode": data.get("retrieval_mode"),
             "retrieval_model": data.get("retrieval_model"),
+            "vector_method": data.get("vector_method"),
             "configuration": {
                 "dataset": dataset,
                 "top_k": top_k,

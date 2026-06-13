@@ -14,6 +14,17 @@ from dataset_manager import (
     validate_dataset
 )
 
+VECTOR_METHOD_ALIASES = {
+    "lsa": "lsa_tfidf_svd",
+    "tfidf_svd": "lsa_tfidf_svd",
+    "lsa_tfidf_svd": "lsa_tfidf_svd",
+    "transformer": "sentence_transformer",
+    "sentence_transformer": "sentence_transformer",
+    "sentence-transformer": "sentence_transformer",
+    "sentence_transformers": "sentence_transformer",
+    "sentence-transformers": "sentence_transformer",
+}
+
 
 app = FastAPI(
     title="IR Retrieval Service",
@@ -153,6 +164,15 @@ def normalize_scores(scores: dict):
     }
 
 
+def normalize_vector_method(vector_method: str | None):
+    if not vector_method:
+        return None
+
+    normalized_name = str(vector_method).lower().strip()
+
+    return VECTOR_METHOD_ALIASES.get(normalized_name, normalized_name)
+
+
 @lru_cache(maxsize=2)
 def get_sentence_transformer_model(model_name: str):
     return SentenceTransformer(model_name)
@@ -168,7 +188,7 @@ def semantic_scores(query: str, resources, search_size: int):
             detail="FAISS index was not loaded. Please build vector resources first."
         )
 
-    vector_method = metadata.get("vector_method")
+    vector_method = normalize_vector_method(metadata.get("vector_method"))
 
     if vector_method == "lsa_tfidf_svd":
         if "vectorizer" not in metadata or "svd" not in metadata:
@@ -199,7 +219,8 @@ def semantic_scores(query: str, resources, search_size: int):
         raise HTTPException(
             status_code=500,
             detail=f"Unsupported vector method: {vector_method}. "
-                   "Supported methods are: lsa_tfidf_svd, sentence_transformer."
+                   "Supported methods are: lsa, lsa_tfidf_svd, "
+                   "transformer, sentence_transformer."
         )
 
     total_documents = int(resources.get("total_documents", 0))
@@ -229,6 +250,11 @@ def semantic_scores(query: str, resources, search_size: int):
         scores[doc_id] = float(score)
 
     return scores
+
+
+def get_vector_method(resources):
+    metadata = resources.get("metadata", {})
+    return normalize_vector_method(metadata.get("vector_method")) or "unknown"
 
 
 def get_doc_text(doc_id: str, resources):
@@ -448,6 +474,7 @@ def semantic_search(query: str, top_k: int, dataset: str):
     return {
         "query": query,
         "model": "Semantic Search using FAISS Vector Index",
+        "vector_method": get_vector_method(resources),
         "dataset": dataset,
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
@@ -536,6 +563,7 @@ def hybrid_search(
         "query": query,
         "processed_query": query_tokens,
         "model": "Hybrid Parallel Search (BM25 + Semantic FAISS Score Fusion)",
+        "vector_method": get_vector_method(resources),
         "dataset": dataset,
         "weights": {
             "bm25_weight": bm25_weight,
@@ -594,6 +622,7 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
             "processed_query": query_tokens,
             "model": "Hybrid Serial Search "
                      "(BM25 Candidate Generation → Semantic Re-ranking)",
+            "vector_method": get_vector_method(resources),
             "dataset": dataset,
             "initial_candidate_count": initial_k,
             "returned_results": 0,
@@ -650,6 +679,7 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
         "processed_query": query_tokens,
         "model": "Hybrid Serial Search "
                  "(BM25 Candidate Generation → Semantic Re-ranking)",
+        "vector_method": get_vector_method(resources),
         "dataset": dataset,
         "initial_candidate_count": initial_k,
         "total_documents": resources["total_documents"],

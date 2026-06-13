@@ -9,6 +9,7 @@
 - دعم TF-IDF و BM25 و Embedding و Hybrid Parallel و Hybrid Serial.
 - التحكم بمعاملات BM25: `k1` و `b`.
 - استخدام FAISS كـ vector store للبحث الدلالي.
+- فهرس Quora المتجهي الحالي مبني بطريقة `sentence_transformer`، والكود يدعم أيضاً `lsa_tfidf_svd`.
 - Query refinement بإضافة مرادفات.
 - تقارير تقييم تعرض Precision@10 و Recall@10 و MRR و MAP و nDCG@10.
 - ثلاث ميزات إضافية ظاهرة:

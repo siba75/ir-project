@@ -164,6 +164,7 @@ def build_transformer_vectors(alias, documents, doc_ids, output_index_dir, batch
         "dataset": alias,
         "source_dataset": DATASET_CONFIGS[alias],
         "vector_method": "sentence_transformer",
+        "vector_method_alias": "transformer",
         "model_name": MODEL_NAME,
         "doc_ids": doc_ids,
         "documents": documents,

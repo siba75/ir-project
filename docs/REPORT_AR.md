@@ -38,7 +38,7 @@
 
 - TF-IDF Vector Space Model.
 - BM25 مع التحكم بالمعاملات `k1` و `b`.
-- Embedding باستخدام Sentence Transformers.
+- Embedding باستخدام FAISS. يدعم النظام طريقتين لبناء الفهرس المتجهي: `sentence_transformer` و `lsa_tfidf_svd`. الفهرس الحالي الخاص بـ Quora مبني باستخدام SentenceTransformer.
 - Hybrid Parallel عن طريق دمج درجات BM25 و Embedding.
 - Hybrid Serial عن طريق BM25 candidate generation ثم semantic reranking.
 

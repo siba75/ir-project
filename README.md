@@ -49,7 +49,7 @@ reports/quora_evaluation_results.json
 
 - TF-IDF
 - BM25 with prebuilt `k1=1.5` and `b=0.75`
-- Semantic FAISS vector search
+- Semantic FAISS vector search. The current Quora index uses `sentence_transformer`; the builder also supports `lsa_tfidf_svd`.
 - Hybrid Parallel score fusion
 - Hybrid Serial BM25 candidate generation plus semantic reranking
 
