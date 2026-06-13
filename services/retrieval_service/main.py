@@ -1,8 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from collections import defaultdict, Counter
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from rank_bm25 import BM25Okapi
 from functools import lru_cache
@@ -94,10 +92,6 @@ def preprocess(text: str) -> list[str]:
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text.split()
-
-
-def preprocess_to_text(text: str) -> str:
-    return " ".join(preprocess(text))
 
 
 def build_inverted_index(documents: list[Document]):
@@ -753,54 +747,6 @@ def hybrid_serial_search(
     }
 
 
-def tfidf_search(query: str, documents: list[Document], top_k: int):
-    doc_ids = [doc.doc_id for doc in documents]
-    original_texts = [doc.text for doc in documents]
-    processed_documents = [preprocess_to_text(doc.text) for doc in documents]
-    processed_query = preprocess_to_text(query)
-
-    if not processed_query:
-        raise HTTPException(
-            status_code=400,
-            detail="Query has no valid searchable terms"
-        )
-
-    vectorizer = TfidfVectorizer()
-    document_matrix = vectorizer.fit_transform(processed_documents)
-    query_vector = vectorizer.transform([processed_query])
-
-    similarity_scores = cosine_similarity(
-        query_vector,
-        document_matrix
-    ).flatten()
-
-    ranked_indices = similarity_scores.argsort()[::-1]
-
-    results = []
-
-    for rank, doc_index in enumerate(ranked_indices[:top_k], start=1):
-        score = float(similarity_scores[doc_index])
-
-        if score == 0:
-            continue
-
-        results.append({
-            "rank": rank,
-            "doc_id": doc_ids[doc_index],
-            "score": round(score, 6),
-            "text": original_texts[doc_index]
-        })
-
-    return {
-        "query": query,
-        "processed_query": processed_query,
-        "model": "TF-IDF Vector Space Model",
-        "total_documents": len(documents),
-        "returned_results": len(results),
-        "results": results
-    }
-
-
 def bm25_search(
     query: str,
     documents: list[Document],
@@ -898,15 +844,6 @@ def search(request: SearchRequest):
         "returned_results": len(results[:request.top_k]),
         "results": results[:request.top_k]
     }
-
-
-@app.post("/search/tfidf")
-def search_tfidf(request: SearchRequest):
-    return tfidf_search(
-        request.query,
-        request.documents,
-        request.top_k
-    )
 
 
 @app.post("/search/bm25")
