@@ -21,6 +21,12 @@ This project is configured for one approved dataset, based on the instructor's a
 - `gateway_service`: orchestrates query refinement and retrieval.
 - `ui/streamlit_app`: Streamlit interface.
 
+Architecture and design-pattern documentation:
+
+```text
+docs/SOA_DESIGN_PATTERNS_AR.md
+```
+
 ## Run
 
 ```bat

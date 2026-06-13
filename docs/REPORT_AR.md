@@ -34,6 +34,19 @@
 
 آلية التواصل بين الخدمات تتم باستخدام REST API.
 
+تم توثيق البنية المعمارية و Design Patterns المستخدمة بالتفصيل في:
+
+`docs/SOA_DESIGN_PATTERNS_AR.md`
+
+يعتمد المشروع على عدة patterns واضحة:
+
+- API Gateway لتوحيد نقطة الدخول من الواجهة إلى الخدمات.
+- Strategy Pattern لاختيار نموذج الاسترجاع المناسب داخل Gateway.
+- Factory Method لبناء payload مختلف لكل نموذج بحث.
+- Repository / Resource Manager لعزل تحميل Dataset والفهارس.
+- Singleton Cache لتقليل إعادة تحميل موارد Quora ونموذج SentenceTransformer.
+- Pipeline Pattern لتمرير الاستعلام عبر refinement ثم retrieval ثم ranking.
+
 ## نماذج تمثيل الوثائق والاستعلامات
 
 - TF-IDF Vector Space Model.
