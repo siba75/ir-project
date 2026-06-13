@@ -86,6 +86,9 @@ if "last_results" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 
+if "previous_response" not in st.session_state:
+    st.session_state.previous_response = None
+
 if "last_search_time" not in st.session_state:
     st.session_state.last_search_time = None
 
@@ -295,6 +298,43 @@ def cluster_results(results):
     ])
 
 
+def parameter_comparison_dataframe(previous_response, current_response):
+    previous_results = previous_response.get("results", [])
+    current_results = current_response.get("results", [])
+
+    previous_by_doc = {
+        str(item.get("doc_id")): item
+        for item in previous_results
+    }
+
+    rows = []
+
+    for item in current_results:
+        doc_id = str(item.get("doc_id"))
+        previous_item = previous_by_doc.get(doc_id)
+
+        rows.append({
+            "Document": doc_id,
+            "Current Rank": item.get("rank"),
+            "Previous Rank": previous_item.get("rank") if previous_item else None,
+            "Rank Change": (
+                previous_item.get("rank") - item.get("rank")
+                if previous_item else None
+            ),
+            "Current Score": item.get("score", 0),
+            "Previous Score": (
+                previous_item.get("score", 0)
+                if previous_item else None
+            ),
+            "Score Change": (
+                round(item.get("score", 0) - previous_item.get("score", 0), 6)
+                if previous_item else None
+            ),
+        })
+
+    return pd.DataFrame(rows)
+
+
 with st.sidebar:
     st.header("⚙️ Search Settings")
 
@@ -303,18 +343,10 @@ with st.sidebar:
         value=st.session_state.dark_mode
     )
 
-    dataset_label = st.selectbox(
-        "Dataset",
-        [
-            "Quora",
-        ]
-    )
-
-    dataset_mapping = {
-        "Quora": "quora",
-    }
-
-    dataset = dataset_mapping[dataset_label]
+    st.metric("Dataset", "Quora")
+    st.caption("Fixed dataset: beir/quora/test")
+    dataset_label = "Quora"
+    dataset = "quora"
 
     retrieval_mode_label = st.selectbox(
         "Retrieval Mode",
@@ -340,9 +372,20 @@ with st.sidebar:
     top_k = st.slider("Number of Results", 1, 20, 5)
 
     if retrieval_mode in ["bm25", "hybrid_parallel", "hybrid_serial"]:
-        bm25_k1 = st.slider("BM25 k1", 0.1, 3.0, 1.5, 0.1, disabled=True)
-        bm25_b = st.slider("BM25 b", 0.0, 1.0, 0.75, 0.05, disabled=True)
-        st.caption("Quora BM25 index is prebuilt with k1=1.5 and b=0.75 for fast full-dataset retrieval.")
+        bm25_k1 = st.slider("BM25 k1", 0.1, 3.0, 1.5, 0.1)
+        bm25_b = st.slider("BM25 b", 0.0, 1.0, 0.75, 0.05)
+        st.caption(
+            "BM25 parameters are applied at query time. Change k1 or b, run "
+            "the same query again, and compare the ranked results and scores."
+        )
+
+        with st.expander("How BM25 parameters affect results"):
+            st.write(
+                "k1 controls term-frequency saturation. Higher values let "
+                "repeated query terms influence the score more. b controls "
+                "document-length normalization. Higher values penalize long "
+                "documents more strongly."
+            )
     else:
         bm25_k1 = 1.5
         bm25_b = 0.75
@@ -351,6 +394,10 @@ with st.sidebar:
         bm25_weight = st.slider("BM25 Weight", 0.0, 1.0, 0.4, 0.05)
         semantic_weight = st.slider("Semantic Weight", 0.0, 1.0, 0.6, 0.05)
         initial_k = 50
+        st.caption(
+            "Parallel hybrid: BM25 and Semantic FAISS run together, then their "
+            "normalized scores are fused using the selected weights."
+        )
     elif retrieval_mode == "hybrid_serial":
         bm25_weight = 0.4
         semantic_weight = 0.6
@@ -478,6 +525,7 @@ if search_clicked:
                     data = response.json()
                     results = data.get("results", [])
 
+                    st.session_state.previous_response = st.session_state.last_response
                     st.session_state.last_response = data
                     st.session_state.last_results = results
                     st.session_state.last_search_time = elapsed_time
@@ -487,7 +535,9 @@ if search_clicked:
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "results": len(results),
                         "mode": retrieval_mode_label,
-                        "dataset": dataset_label
+                        "dataset": dataset_label,
+                        "bm25_k1": bm25_k1,
+                        "bm25_b": bm25_b
                     })
 
                     st.success("Search completed successfully")
@@ -518,7 +568,7 @@ with tab_results:
             col3.metric("Search Time", "N/A")
 
         mode_col1, mode_col2, mode_col3, mode_col4 = st.columns(4)
-        mode_col1.metric("Dataset", data.get("dataset", "N/A"))
+        mode_col1.metric("Dataset", "Quora")
         mode_col2.metric("Retrieval Mode", data.get("retrieval_mode", "N/A"))
         mode_col3.metric("Retrieval Model", data.get("retrieval_model", "N/A"))
         mode_col4.metric("Vector Method", data.get("vector_method", "N/A"))
@@ -596,6 +646,36 @@ with tab_analytics:
         ranking_df = df[["Rank", "Final Score"]].set_index("Rank")
         st.line_chart(ranking_df)
 
+        previous_response = st.session_state.previous_response
+
+        if (
+            previous_response
+            and data
+            and previous_response.get("original_query") == data.get("original_query")
+            and previous_response.get("retrieval_mode") == data.get("retrieval_mode")
+            and data.get("retrieval_mode") in ["bm25", "hybrid_parallel", "hybrid_serial"]
+        ):
+            previous_config = previous_response.get("configuration", {})
+            current_config = data.get("configuration", {})
+
+            st.subheader("BM25 Parameter Difference")
+
+            c_prev, c_curr = st.columns(2)
+            c_prev.metric(
+                "Previous k1 / b",
+                f"{previous_config.get('bm25_k1', 1.5)} / {previous_config.get('bm25_b', 0.75)}"
+            )
+            c_curr.metric(
+                "Current k1 / b",
+                f"{current_config.get('bm25_k1', 1.5)} / {current_config.get('bm25_b', 0.75)}"
+            )
+
+            comparison_df = parameter_comparison_dataframe(
+                previous_response,
+                data
+            )
+            st.dataframe(comparison_df, use_container_width=True)
+
         st.subheader("Result Clustering")
 
         try:
@@ -628,12 +708,15 @@ with tab_evaluation:
     if not EVALUATION_RESULTS:
         st.info("No evaluation reports found. Run the evaluation scripts first.")
     else:
-        selected_eval_dataset = st.selectbox(
-            "Evaluation Dataset",
-            list(EVALUATION_RESULTS.keys())
-        )
+        selected_eval_dataset = "quora"
+        report = EVALUATION_RESULTS.get(selected_eval_dataset)
 
-        report = EVALUATION_RESULTS[selected_eval_dataset]
+        if not report:
+            st.info("Quora evaluation report was not found. Run the evaluation script first.")
+            st.stop()
+
+        st.metric("Evaluation Dataset", "Quora")
+        st.caption("Fixed benchmark: beir/quora/test")
 
         st.caption(
             "Evaluation is computed using benchmark queries and relevance judgments."
@@ -641,7 +724,7 @@ with tab_evaluation:
 
         if "before_features" in report and "after_features" in report:
             st.info(
-                f"Showing before/after feature evaluation for: {selected_eval_dataset}"
+                "Showing before/after feature evaluation for Quora"
             )
 
             before_df = metrics_table(report["before_features"])
@@ -679,7 +762,7 @@ with tab_evaluation:
 
             e1, e2, e3 = st.columns(3)
             e4, e5, e6 = st.columns(3)
-            st.info(f"Showing results for: {selected_eval_dataset} / {selected_eval_mode}")
+            st.info(f"Showing results for: Quora / {selected_eval_mode}")
             e1.metric("Queries", current_eval["Evaluated Queries"])
             e2.metric("Precision@10", f"{current_eval['Precision@10']:.4f}")
             e3.metric("Recall@10", f"{current_eval['Recall@10']:.4f}")
@@ -688,7 +771,7 @@ with tab_evaluation:
             e6.metric("nDCG@10", f"{current_eval['nDCG@10']:.4f}")
 
             comparison_df = metrics_table(report)
-            st.subheader(f"{selected_eval_dataset.capitalize()} Model Comparison")
+            st.subheader("Quora Model Comparison")
             st.dataframe(comparison_df, use_container_width=True)
             st.bar_chart(comparison_df.set_index("Mode"))
 
@@ -709,7 +792,7 @@ User Query
    ↓
 Query Refinement
    ↓
-Dataset Selection
+Fixed Quora Dataset
    ↓
 Hybrid Serial Retrieval
    ├── BM25 Candidate Generation
@@ -723,7 +806,7 @@ User Query
    ↓
 Query Refinement
    ↓
-Dataset Selection
+Fixed Quora Dataset
    ↓
 Hybrid Parallel Retrieval
    ├── BM25 Lexical Search
@@ -738,7 +821,7 @@ Ranked Results
         st.json({
             "original_query": data.get("original_query"),
             "refined_query": data.get("refined_query"),
-            "dataset": data.get("dataset"),
+            "dataset": "quora",
             "retrieval_mode": data.get("retrieval_mode"),
             "retrieval_model": data.get("retrieval_model"),
             "vector_method": data.get("vector_method"),

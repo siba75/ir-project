@@ -75,6 +75,8 @@ class HybridSearchRequest(BaseModel):
     bm25_weight: float = 0.4
     semantic_weight: float = 0.6
     dataset: str = "quora"
+    k1: float = 1.5
+    b: float = 0.75
 
 
 class HybridSerialSearchRequest(BaseModel):
@@ -82,6 +84,8 @@ class HybridSerialSearchRequest(BaseModel):
     top_k: int = 10
     initial_k: int = 50
     dataset: str = "quora"
+    k1: float = 1.5
+    b: float = 0.75
 
 
 def preprocess(text: str) -> list[str]:
@@ -136,11 +140,32 @@ def score_documents(query_tokens: list[str], inverted_index, documents_store):
     ]
 
 
-def lexical_scores(query_tokens: list[str], resources):
+def lexical_scores(
+    query_tokens: list[str],
+    resources,
+    k1: float | None = None,
+    b: float | None = None
+):
     bm25 = resources["bm25"]
     doc_ids = resources["doc_ids"]
 
-    raw_scores = bm25.get_scores(query_tokens)
+    original_k1 = getattr(bm25, "k1", None)
+    original_b = getattr(bm25, "b", None)
+
+    try:
+        if k1 is not None:
+            bm25.k1 = k1
+
+        if b is not None:
+            bm25.b = b
+
+        raw_scores = bm25.get_scores(query_tokens)
+    finally:
+        if original_k1 is not None:
+            bm25.k1 = original_k1
+
+        if original_b is not None:
+            bm25.b = original_b
 
     return {
         str(doc_ids[index]): float(score)
@@ -407,14 +432,19 @@ def dataset_bm25_search(
             detail="Query has no valid searchable terms"
         )
 
-    if k1 != 1.5 or b != 0.75:
+    if k1 <= 0:
         raise HTTPException(
             status_code=400,
-            detail="Quora BM25 index is prebuilt with k1=1.5 and b=0.75. "
-                   "Use these values for fast indexed search."
+            detail="k1 must be greater than 0"
         )
 
-    scores = lexical_scores(query_tokens, resources)
+    if b < 0 or b > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="b must be between 0 and 1"
+        )
+
+    scores = lexical_scores(query_tokens, resources, k1=k1, b=b)
     ranked_results = sorted(
         scores.items(),
         key=lambda item: item[1],
@@ -487,7 +517,9 @@ def hybrid_search(
     top_k: int,
     bm25_weight: float,
     semantic_weight: float,
-    dataset: str
+    dataset: str,
+    k1: float = 1.5,
+    b: float = 0.75
 ):
     dataset = validate_dataset(dataset)
 
@@ -506,6 +538,12 @@ def hybrid_search(
             detail="At least one weight must be greater than 0"
         )
 
+    if k1 <= 0:
+        raise HTTPException(status_code=400, detail="k1 must be greater than 0")
+
+    if b < 0 or b > 1:
+        raise HTTPException(status_code=400, detail="b must be between 0 and 1")
+
     resources = load_dataset_resources(dataset)
     query_tokens = preprocess(query)
 
@@ -515,7 +553,9 @@ def hybrid_search(
             detail="Query has no valid searchable terms"
         )
 
-    bm25_scores = normalize_scores(lexical_scores(query_tokens, resources))
+    bm25_scores = normalize_scores(
+        lexical_scores(query_tokens, resources, k1=k1, b=b)
+    )
 
     semantic_raw = semantic_scores(
         query=query,
@@ -569,13 +609,24 @@ def hybrid_search(
             "bm25_weight": bm25_weight,
             "semantic_weight": semantic_weight
         },
+        "parameters": {
+            "k1": k1,
+            "b": b
+        },
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
         "results": results
     }
 
 
-def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
+def hybrid_serial_search(
+    query: str,
+    top_k: int,
+    initial_k: int,
+    dataset: str,
+    k1: float = 1.5,
+    b: float = 0.75
+):
     dataset = validate_dataset(dataset)
 
     if not query.strip():
@@ -593,6 +644,12 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
             detail="initial_k must be greater than 0"
         )
 
+    if k1 <= 0:
+        raise HTTPException(status_code=400, detail="k1 must be greater than 0")
+
+    if b < 0 or b > 1:
+        raise HTTPException(status_code=400, detail="b must be between 0 and 1")
+
     if initial_k < top_k:
         initial_k = top_k
 
@@ -605,7 +662,7 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
             detail="Query has no valid searchable terms"
         )
 
-    bm25_scores_raw = lexical_scores(query_tokens, resources)
+    bm25_scores_raw = lexical_scores(query_tokens, resources, k1=k1, b=b)
     bm25_scores = normalize_scores(bm25_scores_raw)
 
     ranked_bm25 = sorted(
@@ -624,6 +681,10 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
                      "(BM25 Candidate Generation → Semantic Re-ranking)",
             "vector_method": get_vector_method(resources),
             "dataset": dataset,
+            "parameters": {
+                "k1": k1,
+                "b": b
+            },
             "initial_candidate_count": initial_k,
             "returned_results": 0,
             "results": []
@@ -681,6 +742,10 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
                  "(BM25 Candidate Generation → Semantic Re-ranking)",
         "vector_method": get_vector_method(resources),
         "dataset": dataset,
+        "parameters": {
+            "k1": k1,
+            "b": b
+        },
         "initial_candidate_count": initial_k,
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
@@ -900,7 +965,9 @@ def search_hybrid(request: HybridSearchRequest):
         top_k=request.top_k,
         bm25_weight=request.bm25_weight,
         semantic_weight=request.semantic_weight,
-        dataset=request.dataset
+        dataset=request.dataset,
+        k1=request.k1,
+        b=request.b
     )
 
 
@@ -910,5 +977,7 @@ def search_hybrid_serial(request: HybridSerialSearchRequest):
         query=request.query,
         top_k=request.top_k,
         initial_k=request.initial_k,
-        dataset=request.dataset
+        dataset=request.dataset,
+        k1=request.k1,
+        b=request.b
     )

@@ -83,6 +83,8 @@ def build_hybrid_parallel_payload(request: FullSearchRequest, refined_query: str
         "top_k": request.top_k,
         "bm25_weight": request.bm25_weight,
         "semantic_weight": request.semantic_weight,
+        "k1": request.bm25_k1,
+        "b": request.bm25_b,
         "dataset": request.dataset
     }
 
@@ -92,6 +94,8 @@ def build_hybrid_serial_payload(request: FullSearchRequest, refined_query: str):
         "query": refined_query,
         "top_k": request.top_k,
         "initial_k": request.initial_k,
+        "k1": request.bm25_k1,
+        "b": request.bm25_b,
         "dataset": request.dataset
     }
 

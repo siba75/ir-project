@@ -29,6 +29,8 @@ def test_hybrid_parallel_strategy_builds_expected_payload():
         dataset="quora",
         bm25_weight=0.3,
         semantic_weight=0.7,
+        bm25_k1=2.0,
+        bm25_b=0.5,
     )
 
     url, payload = RETRIEVAL_STRATEGIES["hybrid_parallel"](
@@ -42,5 +44,7 @@ def test_hybrid_parallel_strategy_builds_expected_payload():
         "top_k": 7,
         "bm25_weight": 0.3,
         "semantic_weight": 0.7,
+        "k1": 2.0,
+        "b": 0.5,
         "dataset": "quora",
     }
