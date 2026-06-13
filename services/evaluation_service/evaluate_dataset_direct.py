@@ -27,6 +27,40 @@ EVALUATION_MODES = [
     "hybrid_serial",
 ]
 
+SYNONYMS = {
+    "learn": ["study", "practice"],
+    "learning": ["studying", "training"],
+    "programming": ["coding", "development"],
+    "code": ["programming", "software"],
+    "job": ["career", "work"],
+    "best": ["top", "recommended"],
+    "good": ["best", "useful"],
+    "difference": ["comparison", "compare"],
+    "start": ["begin", "learn"],
+    "language": ["programming"],
+    "computer": ["technology", "software"],
+    "business": ["company", "startup"],
+    "money": ["finance", "income"],
+    "health": ["medical", "wellness"],
+    "phone": ["mobile", "smartphone"],
+    "india": ["indian"],
+    "usa": ["america", "american"],
+}
+
+
+def refine_query_for_after_features(query):
+    terms = query.lower().split()
+    expanded_terms = []
+
+    for term in terms:
+        clean_term = "".join(ch for ch in term if ch.isalnum())
+
+        if clean_term in SYNONYMS:
+            expanded_terms.extend(SYNONYMS[clean_term])
+
+    combined_terms = terms + expanded_terms[:8]
+    return " ".join(combined_terms)
+
 
 def precision_at_k(retrieved, relevant, k):
     return len(set(retrieved[:k]) & set(relevant)) / k
@@ -109,7 +143,7 @@ def run_search(mode, query, dataset_name):
     raise ValueError(f"Unsupported mode: {mode}")
 
 
-def evaluate_mode(dataset_name, mode, max_queries):
+def evaluate_mode(dataset_name, mode, max_queries, use_after_features=False):
     dataset_dir = BASE_DIR / "datasets" / dataset_name
 
     with open(dataset_dir / "queries.json", "r", encoding="utf-8") as file:
@@ -131,7 +165,13 @@ def evaluate_mode(dataset_name, mode, max_queries):
         if not query_text or not relevant_docs:
             continue
 
-        data = run_search(mode, query_text, dataset_name)
+        effective_query = (
+            refine_query_for_after_features(query_text)
+            if use_after_features
+            else query_text
+        )
+
+        data = run_search(mode, effective_query, dataset_name)
         retrieved_docs = [
             str(item["doc_id"])
             for item in data.get("results", [])
@@ -143,13 +183,15 @@ def evaluate_mode(dataset_name, mode, max_queries):
         map_scores.append(average_precision(retrieved_docs, relevant_docs))
         ndcg_scores.append(ndcg_at_k(retrieved_docs, relevant_docs, TOP_K))
 
-        print(f"[{counter}] {dataset_name}/{mode}/{query_id}")
+        phase = "after" if use_after_features else "before"
+        print(f"[{counter}] {dataset_name}/{phase}/{mode}/{query_id}")
 
     total = len(precision_scores)
 
     return {
         "dataset": dataset_name,
         "retrieval_mode": mode,
+        "phase": "after_features" if use_after_features else "before_features",
         "evaluated_queries": total,
         f"mean_precision@{TOP_K}": round(sum(precision_scores) / total, 4) if total else 0,
         f"mean_recall@{TOP_K}": round(sum(recall_scores) / total, 4) if total else 0,
@@ -159,15 +201,79 @@ def evaluate_mode(dataset_name, mode, max_queries):
     }
 
 
+def build_comparison(before_results, after_results):
+    comparison = {}
+
+    for mode, before_values in before_results.items():
+        after_values = after_results.get(mode, {})
+
+        comparison[mode] = {
+            "precision@10_delta": round(
+                after_values.get(f"mean_precision@{TOP_K}", 0)
+                - before_values.get(f"mean_precision@{TOP_K}", 0),
+                4
+            ),
+            "recall@10_delta": round(
+                after_values.get(f"mean_recall@{TOP_K}", 0)
+                - before_values.get(f"mean_recall@{TOP_K}", 0),
+                4
+            ),
+            "mrr_delta": round(
+                after_values.get("mrr", 0) - before_values.get("mrr", 0),
+                4
+            ),
+            "map_delta": round(
+                after_values.get("map", 0) - before_values.get("map", 0),
+                4
+            ),
+            f"ndcg@{TOP_K}_delta": round(
+                after_values.get(f"ndcg@{TOP_K}", 0)
+                - before_values.get(f"ndcg@{TOP_K}", 0),
+                4
+            ),
+        }
+
+    return comparison
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", choices=["quora"])
-    parser.add_argument("--max-queries", type=int, default=50)
+    parser.add_argument("--max-queries", type=int, default=100)
     args = parser.parse_args()
 
-    all_results = {
-        mode: evaluate_mode(args.dataset, mode, args.max_queries)
+    before_results = {
+        mode: evaluate_mode(
+            args.dataset,
+            mode,
+            args.max_queries,
+            use_after_features=False
+        )
         for mode in EVALUATION_MODES
+    }
+
+    after_results = {
+        mode: evaluate_mode(
+            args.dataset,
+            mode,
+            args.max_queries,
+            use_after_features=True
+        )
+        for mode in EVALUATION_MODES
+    }
+
+    all_results = {
+        "dataset": args.dataset,
+        "source_dataset": "beir/quora/test",
+        "evaluated_queries": args.max_queries,
+        "top_k": TOP_K,
+        "before_features": before_results,
+        "after_features": after_results,
+        "comparison": build_comparison(before_results, after_results),
+        "feature_notes": {
+            "before_features": "Raw benchmark queries with core retrieval models.",
+            "after_features": "Queries expanded with the query refinement feature. FAISS vector store is used by semantic and hybrid models. UI personalization and result clustering are interactive features and are documented separately."
+        }
     }
 
     output_path = BASE_DIR / "reports" / f"{args.dataset}_evaluation_results.json"

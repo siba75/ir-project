@@ -5,13 +5,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 from rank_bm25 import BM25Okapi
-import math
+from functools import lru_cache
+from sentence_transformers import SentenceTransformer
 import re
 
 from dataset_manager import (
     load_dataset_resources,
     validate_dataset
 )
+
 
 app = FastAPI(
     title="IR Retrieval Service",
@@ -106,7 +108,11 @@ def score_documents(query_tokens: list[str], inverted_index, documents_store):
             for doc_id, frequency in inverted_index[term].items():
                 scores[doc_id] += frequency
 
-    ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     return [
         {
@@ -119,7 +125,7 @@ def score_documents(query_tokens: list[str], inverted_index, documents_store):
     ]
 
 
-def lexical_scores(query_tokens, resources):
+def lexical_scores(query_tokens: list[str], resources):
     bm25 = resources["bm25"]
     doc_ids = resources["doc_ids"]
 
@@ -147,24 +153,68 @@ def normalize_scores(scores: dict):
     }
 
 
-def semantic_scores(query: str, resources, search_size: int):
-    faiss_index = resources["faiss_index"]
-    metadata = resources["metadata"]
+@lru_cache(maxsize=2)
+def get_sentence_transformer_model(model_name: str):
+    return SentenceTransformer(model_name)
 
-    if metadata.get("vector_method") == "lsa_tfidf_svd":
+
+def semantic_scores(query: str, resources, search_size: int):
+    faiss_index = resources.get("faiss_index")
+    metadata = resources.get("metadata", {})
+
+    if faiss_index is None:
+        raise HTTPException(
+            status_code=500,
+            detail="FAISS index was not loaded. Please build vector resources first."
+        )
+
+    vector_method = metadata.get("vector_method")
+
+    if vector_method == "lsa_tfidf_svd":
+        if "vectorizer" not in metadata or "svd" not in metadata:
+            raise HTTPException(
+                status_code=500,
+                detail="LSA vectorizer or SVD model is missing from metadata."
+            )
+
         query_tfidf = metadata["vectorizer"].transform([query])
         query_embedding = metadata["svd"].transform(query_tfidf)
         query_embedding = normalize(query_embedding).astype("float32")
+
+    elif vector_method == "sentence_transformer":
+        model_name = metadata.get(
+            "model_name",
+            "sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        model = get_sentence_transformer_model(model_name)
+
+        query_embedding = model.encode(
+            [query],
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        ).astype("float32")
+
     else:
         raise HTTPException(
             status_code=500,
-            detail="Unsupported vector method. Expected LSA TF-IDF SVD vectors."
+            detail=f"Unsupported vector method: {vector_method}. "
+                   "Supported methods are: lsa_tfidf_svd, sentence_transformer."
         )
 
-    scores_raw, indices = faiss_index.search(
-        query_embedding,
-        min(search_size, resources["total_documents"])
-    )
+    total_documents = int(resources.get("total_documents", 0))
+
+    if total_documents <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail="No documents found in loaded resources."
+        )
+
+    search_limit = min(search_size, total_documents)
+
+    scores_raw, indices = faiss_index.search(query_embedding, search_limit)
+
+    doc_ids = metadata.get("doc_ids", [])
 
     scores = {}
 
@@ -172,7 +222,10 @@ def semantic_scores(query: str, resources, search_size: int):
         if doc_index == -1:
             continue
 
-        doc_id = str(metadata["doc_ids"][doc_index])
+        if doc_index >= len(doc_ids):
+            continue
+
+        doc_id = str(doc_ids[doc_index])
         scores[doc_id] = float(score)
 
     return scores
@@ -190,7 +243,7 @@ def get_doc_text(doc_id: str, resources):
     try:
         position = doc_ids.index(str(doc_id))
         return metadata["documents"][position]
-    except ValueError:
+    except (ValueError, KeyError, IndexError):
         return ""
 
 
@@ -214,10 +267,17 @@ def indexed_search(query: str, top_k: int, dataset: str):
     query_tokens = preprocess(query)
 
     if not query_tokens:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     scores = lexical_scores(query_tokens, resources)
-    ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     results = []
 
@@ -250,7 +310,10 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
     query_tokens = preprocess(query)
 
     if not query_tokens:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     bm25 = resources["bm25"]
     doc_ids = resources["doc_ids"]
@@ -263,12 +326,18 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
             term_frequency = term_frequencies.get(term, 0)
 
             if term_frequency:
-                score += float(term_frequency) * float(bm25.idf.get(term, 0.0))
+                score += float(term_frequency) * float(
+                    bm25.idf.get(term, 0.0)
+                )
 
         if score > 0:
             scores[str(doc_ids[doc_index])] = score
 
-    ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     results = []
 
@@ -291,23 +360,64 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
     }
 
 
-def dataset_bm25_search(query: str, top_k: int, dataset: str, k1: float, b: float):
+def dataset_bm25_search(
+    query: str,
+    top_k: int,
+    dataset: str,
+    k1: float,
+    b: float
+):
     dataset = validate_dataset(dataset)
 
     if not query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     resources = load_dataset_resources(dataset)
-    doc_ids, documents = get_dataset_documents(resources)
+    query_tokens = preprocess(query)
 
-    wrapped_documents = [
-        Document(doc_id=doc_id, text=text)
-        for doc_id, text in zip(doc_ids, documents)
-    ]
+    if not query_tokens:
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
-    result = bm25_search(query, wrapped_documents, top_k, k1, b)
-    result["dataset"] = dataset
-    return result
+    if k1 != 1.5 or b != 0.75:
+        raise HTTPException(
+            status_code=400,
+            detail="Quora BM25 index is prebuilt with k1=1.5 and b=0.75. "
+                   "Use these values for fast indexed search."
+        )
+
+    scores = lexical_scores(query_tokens, resources)
+    ranked_results = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
+
+    results = []
+
+    for rank, (doc_id, score) in enumerate(ranked_results[:top_k], start=1):
+        results.append({
+            "rank": rank,
+            "doc_id": doc_id,
+            "score": round(float(score), 6),
+            "text": get_doc_text(doc_id, resources)
+        })
+
+    return {
+        "query": query,
+        "processed_query": query_tokens,
+        "model": "Precomputed BM25",
+        "parameters": {
+            "k1": k1,
+            "b": b
+        },
+        "dataset": dataset,
+        "total_documents": resources["total_documents"],
+        "returned_results": len(results),
+        "results": results
+    }
 
 
 def semantic_search(query: str, top_k: int, dataset: str):
@@ -319,7 +429,11 @@ def semantic_search(query: str, top_k: int, dataset: str):
     resources = load_dataset_resources(dataset)
     scores = semantic_scores(query, resources, top_k)
 
-    ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     results = []
 
@@ -341,26 +455,47 @@ def semantic_search(query: str, top_k: int, dataset: str):
     }
 
 
-def hybrid_search(query: str, top_k: int, bm25_weight: float, semantic_weight: float, dataset: str):
+def hybrid_search(
+    query: str,
+    top_k: int,
+    bm25_weight: float,
+    semantic_weight: float,
+    dataset: str
+):
     dataset = validate_dataset(dataset)
 
     if not query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     if bm25_weight < 0 or semantic_weight < 0:
-        raise HTTPException(status_code=400, detail="Weights must be non-negative")
+        raise HTTPException(
+            status_code=400,
+            detail="Weights must be non-negative"
+        )
 
     if bm25_weight + semantic_weight == 0:
-        raise HTTPException(status_code=400, detail="At least one weight must be greater than 0")
+        raise HTTPException(
+            status_code=400,
+            detail="At least one weight must be greater than 0"
+        )
 
     resources = load_dataset_resources(dataset)
     query_tokens = preprocess(query)
 
     if not query_tokens:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     bm25_scores = normalize_scores(lexical_scores(query_tokens, resources))
-    semantic_raw = semantic_scores(query, resources, top_k * 5)
+
+    semantic_raw = semantic_scores(
+        query=query,
+        resources=resources,
+        search_size=max(top_k * 5, 50)
+    )
+
     semantic_normalized = normalize_scores(semantic_raw)
 
     all_doc_ids = set(bm25_scores.keys()) | set(semantic_normalized.keys())
@@ -376,7 +511,11 @@ def hybrid_search(query: str, top_k: int, bm25_weight: float, semantic_weight: f
             semantic_weight * semantic_score
         )
 
-    ranked_results = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        final_scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     results = []
 
@@ -386,7 +525,10 @@ def hybrid_search(query: str, top_k: int, bm25_weight: float, semantic_weight: f
             "doc_id": doc_id,
             "score": round(float(score), 6),
             "bm25_score": round(float(bm25_scores.get(doc_id, 0.0)), 6),
-            "semantic_score": round(float(semantic_normalized.get(doc_id, 0.0)), 6),
+            "semantic_score": round(
+                float(semantic_normalized.get(doc_id, 0.0)),
+                6
+            ),
             "text": get_doc_text(doc_id, resources)
         })
 
@@ -412,10 +554,16 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     if top_k <= 0:
-        raise HTTPException(status_code=400, detail="top_k must be greater than 0")
+        raise HTTPException(
+            status_code=400,
+            detail="top_k must be greater than 0"
+        )
 
     if initial_k <= 0:
-        raise HTTPException(status_code=400, detail="initial_k must be greater than 0")
+        raise HTTPException(
+            status_code=400,
+            detail="initial_k must be greater than 0"
+        )
 
     if initial_k < top_k:
         initial_k = top_k
@@ -424,7 +572,10 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
     query_tokens = preprocess(query)
 
     if not query_tokens:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     bm25_scores_raw = lexical_scores(query_tokens, resources)
     bm25_scores = normalize_scores(bm25_scores_raw)
@@ -441,7 +592,8 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
         return {
             "query": query,
             "processed_query": query_tokens,
-            "model": "Hybrid Serial Search (BM25 Candidate Generation → Semantic Re-ranking)",
+            "model": "Hybrid Serial Search "
+                     "(BM25 Candidate Generation → Semantic Re-ranking)",
             "dataset": dataset,
             "initial_candidate_count": initial_k,
             "returned_results": 0,
@@ -469,7 +621,11 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
     for doc_id in candidate_doc_ids:
         final_scores[doc_id] = semantic_normalized.get(doc_id, 0.0)
 
-    ranked_results = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
+    ranked_results = sorted(
+        final_scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
 
     results = []
 
@@ -478,15 +634,22 @@ def hybrid_serial_search(query: str, top_k: int, initial_k: int, dataset: str):
             "rank": rank,
             "doc_id": doc_id,
             "score": round(float(score), 6),
-            "bm25_candidate_score": round(float(bm25_scores.get(doc_id, 0.0)), 6),
-            "semantic_rerank_score": round(float(semantic_normalized.get(doc_id, 0.0)), 6),
+            "bm25_candidate_score": round(
+                float(bm25_scores.get(doc_id, 0.0)),
+                6
+            ),
+            "semantic_rerank_score": round(
+                float(semantic_normalized.get(doc_id, 0.0)),
+                6
+            ),
             "text": get_doc_text(doc_id, resources)
         })
 
     return {
         "query": query,
         "processed_query": query_tokens,
-        "model": "Hybrid Serial Search (BM25 Candidate Generation → Semantic Re-ranking)",
+        "model": "Hybrid Serial Search "
+                 "(BM25 Candidate Generation → Semantic Re-ranking)",
         "dataset": dataset,
         "initial_candidate_count": initial_k,
         "total_documents": resources["total_documents"],
@@ -502,13 +665,20 @@ def tfidf_search(query: str, documents: list[Document], top_k: int):
     processed_query = preprocess_to_text(query)
 
     if not processed_query:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     vectorizer = TfidfVectorizer()
     document_matrix = vectorizer.fit_transform(processed_documents)
     query_vector = vectorizer.transform([processed_query])
 
-    similarity_scores = cosine_similarity(query_vector, document_matrix).flatten()
+    similarity_scores = cosine_similarity(
+        query_vector,
+        document_matrix
+    ).flatten()
+
     ranked_indices = similarity_scores.argsort()[::-1]
 
     results = []
@@ -536,12 +706,24 @@ def tfidf_search(query: str, documents: list[Document], top_k: int):
     }
 
 
-def bm25_search(query: str, documents: list[Document], top_k: int, k1: float, b: float):
+def bm25_search(
+    query: str,
+    documents: list[Document],
+    top_k: int,
+    k1: float,
+    b: float
+):
     if k1 <= 0:
-        raise HTTPException(status_code=400, detail="k1 must be greater than 0")
+        raise HTTPException(
+            status_code=400,
+            detail="k1 must be greater than 0"
+        )
 
     if b < 0 or b > 1:
-        raise HTTPException(status_code=400, detail="b must be between 0 and 1")
+        raise HTTPException(
+            status_code=400,
+            detail="b must be between 0 and 1"
+        )
 
     doc_ids = [doc.doc_id for doc in documents]
     original_texts = [doc.text for doc in documents]
@@ -549,7 +731,10 @@ def bm25_search(query: str, documents: list[Document], top_k: int, k1: float, b:
     tokenized_query = preprocess(query)
 
     if not tokenized_query:
-        raise HTTPException(status_code=400, detail="Query has no valid searchable terms")
+        raise HTTPException(
+            status_code=400,
+            detail="Query has no valid searchable terms"
+        )
 
     bm25 = BM25Okapi(tokenized_documents, k1=k1, b=b)
     scores = bm25.get_scores(tokenized_query)
@@ -574,7 +759,10 @@ def bm25_search(query: str, documents: list[Document], top_k: int, k1: float, b:
         "query": query,
         "processed_query": tokenized_query,
         "model": "BM25",
-        "parameters": {"k1": k1, "b": b},
+        "parameters": {
+            "k1": k1,
+            "b": b
+        },
         "total_documents": len(documents),
         "returned_results": len(results),
         "results": results
@@ -619,7 +807,11 @@ def search(request: SearchRequest):
 
 @app.post("/search/tfidf")
 def search_tfidf(request: SearchRequest):
-    return tfidf_search(request.query, request.documents, request.top_k)
+    return tfidf_search(
+        request.query,
+        request.documents,
+        request.top_k
+    )
 
 
 @app.post("/search/bm25")

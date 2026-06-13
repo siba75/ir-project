@@ -1,52 +1,161 @@
 {
-  "tfidf": {
-    "dataset": "quora",
-    "retrieval_mode": "tfidf",
-    "evaluated_queries": 10,
-    "mean_precision@10": 0.02,
-    "mean_recall@10": 0.2,
-    "mrr": 0.1111,
-    "map": 0.1111,
-    "ndcg@10": 0.1301
+  "dataset": "quora",
+  "source_dataset": "beir/quora/test",
+  "evaluated_queries": 100,
+  "top_k": 10,
+  "before_features": {
+    "tfidf": {
+      "dataset": "quora",
+      "retrieval_mode": "tfidf",
+      "phase": "before_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.067,
+      "mean_recall@10": 0.5022,
+      "mrr": 0.3229,
+      "map": 0.2958,
+      "ndcg@10": 0.3545
+    },
+    "bm25": {
+      "dataset": "quora",
+      "retrieval_mode": "bm25",
+      "phase": "before_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.122,
+      "mean_recall@10": 0.7608,
+      "mrr": 0.6748,
+      "map": 0.5956,
+      "ndcg@10": 0.6587
+    },
+    "semantic": {
+      "dataset": "quora",
+      "retrieval_mode": "semantic",
+      "phase": "before_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.07,
+      "mean_recall@10": 0.37,
+      "mrr": 0.3628,
+      "map": 0.2996,
+      "ndcg@10": 0.3383
+    },
+    "hybrid_parallel": {
+      "dataset": "quora",
+      "retrieval_mode": "hybrid_parallel",
+      "phase": "before_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.08,
+      "mean_recall@10": 0.4471,
+      "mrr": 0.4773,
+      "map": 0.383,
+      "ndcg@10": 0.4243
+    },
+    "hybrid_serial": {
+      "dataset": "quora",
+      "retrieval_mode": "hybrid_serial",
+      "phase": "before_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.086,
+      "mean_recall@10": 0.4569,
+      "mrr": 0.4351,
+      "map": 0.3501,
+      "ndcg@10": 0.4024
+    }
   },
-  "bm25": {
-    "dataset": "quora",
-    "retrieval_mode": "bm25",
-    "evaluated_queries": 10,
-    "mean_precision@10": 0.1,
-    "mean_recall@10": 0.65,
-    "mrr": 0.4787,
-    "map": 0.4283,
-    "ndcg@10": 0.4996
+  "after_features": {
+    "tfidf": {
+      "dataset": "quora",
+      "retrieval_mode": "tfidf",
+      "phase": "after_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.064,
+      "mean_recall@10": 0.4866,
+      "mrr": 0.3116,
+      "map": 0.2904,
+      "ndcg@10": 0.3454
+    },
+    "bm25": {
+      "dataset": "quora",
+      "retrieval_mode": "bm25",
+      "phase": "after_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.12,
+      "mean_recall@10": 0.7556,
+      "mrr": 0.6722,
+      "map": 0.5947,
+      "ndcg@10": 0.6558
+    },
+    "semantic": {
+      "dataset": "quora",
+      "retrieval_mode": "semantic",
+      "phase": "after_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.058,
+      "mean_recall@10": 0.3448,
+      "mrr": 0.3113,
+      "map": 0.2641,
+      "ndcg@10": 0.2984
+    },
+    "hybrid_parallel": {
+      "dataset": "quora",
+      "retrieval_mode": "hybrid_parallel",
+      "phase": "after_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.073,
+      "mean_recall@10": 0.4228,
+      "mrr": 0.4367,
+      "map": 0.3587,
+      "ndcg@10": 0.3958
+    },
+    "hybrid_serial": {
+      "dataset": "quora",
+      "retrieval_mode": "hybrid_serial",
+      "phase": "after_features",
+      "evaluated_queries": 100,
+      "mean_precision@10": 0.077,
+      "mean_recall@10": 0.4419,
+      "mrr": 0.4005,
+      "map": 0.3259,
+      "ndcg@10": 0.3751
+    }
   },
-  "semantic": {
-    "dataset": "quora",
-    "retrieval_mode": "semantic",
-    "evaluated_queries": 10,
-    "mean_precision@10": 0.01,
-    "mean_recall@10": 0.1,
-    "mrr": 0.0333,
-    "map": 0.0333,
-    "ndcg@10": 0.05
+  "comparison": {
+    "tfidf": {
+      "precision@10_delta": -0.003,
+      "recall@10_delta": -0.0156,
+      "mrr_delta": -0.0113,
+      "map_delta": -0.0054,
+      "ndcg@10_delta": -0.0091
+    },
+    "bm25": {
+      "precision@10_delta": -0.002,
+      "recall@10_delta": -0.0052,
+      "mrr_delta": -0.0026,
+      "map_delta": -0.0009,
+      "ndcg@10_delta": -0.0029
+    },
+    "semantic": {
+      "precision@10_delta": -0.012,
+      "recall@10_delta": -0.0252,
+      "mrr_delta": -0.0515,
+      "map_delta": -0.0355,
+      "ndcg@10_delta": -0.0399
+    },
+    "hybrid_parallel": {
+      "precision@10_delta": -0.007,
+      "recall@10_delta": -0.0243,
+      "mrr_delta": -0.0406,
+      "map_delta": -0.0243,
+      "ndcg@10_delta": -0.0285
+    },
+    "hybrid_serial": {
+      "precision@10_delta": -0.009,
+      "recall@10_delta": -0.015,
+      "mrr_delta": -0.0346,
+      "map_delta": -0.0242,
+      "ndcg@10_delta": -0.0273
+    }
   },
-  "hybrid_parallel": {
-    "dataset": "quora",
-    "retrieval_mode": "hybrid_parallel",
-    "evaluated_queries": 10,
-    "mean_precision@10": 0.03,
-    "mean_recall@10": 0.225,
-    "mrr": 0.2333,
-    "map": 0.2083,
-    "ndcg@10": 0.2195
-  },
-  "hybrid_serial": {
-    "dataset": "quora",
-    "retrieval_mode": "hybrid_serial",
-    "evaluated_queries": 10,
-    "mean_precision@10": 0.02,
-    "mean_recall@10": 0.2,
-    "mrr": 0.1333,
-    "map": 0.1333,
-    "ndcg@10": 0.15
+  "feature_notes": {
+    "before_features": "Raw benchmark queries with core retrieval models.",
+    "after_features": "Queries expanded with the query refinement feature. FAISS vector store is used by semantic and hybrid models. UI personalization and result clustering are interactive features and are documented separately."
   }
 }

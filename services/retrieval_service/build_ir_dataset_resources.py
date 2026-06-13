@@ -17,7 +17,6 @@ from sklearn.preprocessing import normalize
 
 DATASET_CONFIGS = {
     "quora": "beir/quora/test",
-    
 }
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
