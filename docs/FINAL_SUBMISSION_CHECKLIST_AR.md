@@ -21,9 +21,9 @@
 
 1. تشغيل الخدمات من `run_services.bat` والتأكد أن الواجهة تعمل على `http://localhost:8501`.
 2. تشغيل تقييم Quora عند الحاجة:
-   `python services/evaluation_service/evaluate_dataset_direct.py quora --max-queries 100`
+   `python services/evaluation_service/evaluate_dataset_direct.py quora --max-queries 200`
 3. تضمين نتائج التقرير الموجود في `reports/quora_evaluation_results.json` ضمن التقرير النهائي.
-4. شرح أن التقييم المختصر بسبب حجم Dataset والذاكرة المتاحة، ويمكن رفع `--max-queries` عند توفر وقت/ذاكرة أكبر.
+4. شرح أن التقييم تم على 200 query من qrels، وهو عدد أكبر ومناسب للتقرير مع مراعاة وقت التشغيل على جهاز 8GB RAM.
 5. تشغيل أو عرض كل النماذج:
    - TF-IDF
    - BM25

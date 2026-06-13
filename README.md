@@ -36,7 +36,7 @@ http://localhost:8501
 ## Evaluation
 
 ```bash
-python services/evaluation_service/evaluate_dataset_direct.py quora --max-queries 100
+python services/evaluation_service/evaluate_dataset_direct.py quora --max-queries 200
 ```
 
 The generated report includes before/after feature tables and is saved to:

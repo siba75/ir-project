@@ -239,7 +239,7 @@ def build_comparison(before_results, after_results):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", choices=["quora"])
-    parser.add_argument("--max-queries", type=int, default=100)
+    parser.add_argument("--max-queries", type=int, default=200)
     args = parser.parse_args()
 
     before_results = {
