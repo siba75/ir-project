@@ -374,6 +374,7 @@ with st.sidebar:
     st.divider()
 
     remove_stopwords = st.checkbox("Remove Stopwords", value=True)
+    use_lemmatization = st.checkbox("Lemmatization", value=False)
     use_expansion = st.checkbox("Query Expansion", value=True)
     use_stemming = st.checkbox("Stemming", value=False)
     use_personalization = st.checkbox("Personalization", value=False)
@@ -446,6 +447,7 @@ if search_clicked:
             "bm25_b": bm25_b,
             "initial_k": initial_k,
             "remove_stopwords": remove_stopwords,
+            "use_lemmatization": use_lemmatization,
             "use_stemming": use_stemming,
             "use_expansion": use_expansion,
             "use_personalization": use_personalization,
@@ -749,6 +751,7 @@ Ranked Results
                 "bm25_b": bm25_b,
                 "initial_k": initial_k,
                 "remove_stopwords": remove_stopwords,
+                "use_lemmatization": use_lemmatization,
                 "use_expansion": use_expansion,
                 "use_stemming": use_stemming,
                 "use_personalization": use_personalization,

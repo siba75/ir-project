@@ -157,7 +157,7 @@ def evaluate_mode(dataset_name, mode, max_queries):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", choices=["quora"])
-    parser.add_argument("--max-queries", type=int, default=50)
+    parser.add_argument("--max-queries", type=int, default=200)
     args = parser.parse_args()
 
     all_results = {
@@ -165,7 +165,7 @@ def main():
         for mode in EVALUATION_MODES
     }
 
-    output_path = BASE_DIR / "reports" / f"{args.dataset}_evaluation_results.json"
+    output_path = BASE_DIR / "reports" / f"{args.dataset}_gateway_evaluation_results.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as file:

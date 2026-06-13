@@ -47,6 +47,14 @@
 - Singleton Cache لتقليل إعادة تحميل موارد Quora ونموذج SentenceTransformer.
 - Pipeline Pattern لتمرير الاستعلام عبر refinement ثم retrieval ثم ranking.
 
+كما تم توثيق مطابقة متطلبات الفهرسة ومعالجة الاستعلام وتحسينه والترتيب في:
+
+`docs/IR_CORE_REQUIREMENTS_AR.md`
+
+كما تم توثيق مطابقة متطلبات preprocessing وتمثيل الوثائق في:
+
+`docs/PREPROCESSING_REPRESENTATION_REQUIREMENTS_AR.md`
+
 ## نماذج تمثيل الوثائق والاستعلامات
 
 - TF-IDF Vector Space Model.
@@ -54,6 +62,10 @@
 - Embedding باستخدام FAISS. يدعم النظام طريقتين لبناء الفهرس المتجهي: `sentence_transformer` و `lsa_tfidf_svd`. الفهرس الحالي الخاص بـ Quora مبني باستخدام SentenceTransformer.
 - Hybrid Parallel عن طريق دمج درجات BM25 و Embedding.
 - Hybrid Serial عن طريق BM25 candidate generation ثم semantic reranking.
+
+تم بناء Inverted Index و BM25 index و FAISS vector index لمجموعة Quora، وتتم معالجة الاستعلامات بنفس خطوات التنظيف الأساسية المستخدمة أثناء الفهرسة لضمان التوافق بين تمثيل الوثائق وتمثيل الاستعلام. يدعم النظام Normalization و Stopword Removal و Stemming و Lemmatization كخيارات preprocessing.
+
+بالنسبة لمعاملات BM25، يتم عرض `k1=1.5` و `b=0.75` في الواجهة، لكنها مقفلة لأن فهرس Quora الكامل مبني مسبقاً بهذه القيم لتسريع البحث على جهاز 8GB RAM. تغيير هذه القيم يتطلب إعادة بناء فهرس BM25.
 
 ## الميزات الإضافية
 
@@ -73,6 +85,10 @@
 كما تم تجهيز ملخص الجداول والتحليل في:
 
 `docs/EVALUATION_SUMMARY_AR.md`
+
+كما تم تجهيز ملف يطابق متطلبات التقييم بنداً بنداً في:
+
+`docs/EVALUATION_REQUIREMENTS_AR.md`
 
 يعرض التقرير ثلاث جداول: قبل الميزات الإضافية، بعد الميزات الإضافية، وفرق الأداء بين المرحلتين. أظهرت النتائج أن Semantic FAISS هو الأفضل على عينة التقييم الحالية من Quora، حيث حقق أعلى قيم في Recall@10 و MRR و MAP و nDCG@10. كما ظهر أن query expansion اليدوي لم يحسن الأداء على هذه العينة، لذلك بقيت هذه الميزة اختيارية في الواجهة.
 

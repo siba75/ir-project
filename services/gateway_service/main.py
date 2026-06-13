@@ -44,6 +44,7 @@ class FullSearchRequest(BaseModel):
 
     remove_stopwords: bool = True
     use_stemming: bool = False
+    use_lemmatization: bool = False
     use_expansion: bool = True
 
     use_personalization: bool = False
@@ -196,6 +197,7 @@ async def full_search(request: FullSearchRequest):
         "query": request.query,
         "remove_stopwords": request.remove_stopwords,
         "use_stemming": request.use_stemming,
+        "use_lemmatization": request.use_lemmatization,
         "use_expansion": request.use_expansion
     }
 
@@ -272,6 +274,7 @@ async def full_search(request: FullSearchRequest):
             "initial_k": request.initial_k,
             "remove_stopwords": request.remove_stopwords,
             "use_stemming": request.use_stemming,
+            "use_lemmatization": request.use_lemmatization,
             "use_expansion": request.use_expansion,
             "use_personalization": request.use_personalization
         },

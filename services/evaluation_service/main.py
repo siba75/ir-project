@@ -6,6 +6,7 @@ from metrics import (
     average_precision,
     f1_score,
     mean_reciprocal_rank,
+    ndcg_at_k,
     precision_at_k,
     recall_at_k,
 )
@@ -33,7 +34,8 @@ def home():
             "recall_at_k",
             "f1_score",
             "mrr",
-            "average_precision"
+            "average_precision",
+            "ndcg_at_k"
         ]
     }
 
@@ -77,6 +79,12 @@ def evaluate(request: EvaluationRequest):
         request.relevant_docs
     )
 
+    ndcg = ndcg_at_k(
+        request.retrieved_docs,
+        request.relevant_docs,
+        request.k
+    )
+
     return {
         "k": request.k,
         "retrieved_documents": request.retrieved_docs,
@@ -86,6 +94,7 @@ def evaluate(request: EvaluationRequest):
             "recall_at_k": round(recall, 4),
             "f1_score": round(f1, 4),
             "mrr": round(mrr, 4),
-            "average_precision": round(ap, 4)
+            "average_precision": round(ap, 4),
+            "ndcg_at_k": round(ndcg, 4)
         }
     }

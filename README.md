@@ -27,6 +27,24 @@ Architecture and design-pattern documentation:
 docs/SOA_DESIGN_PATTERNS_AR.md
 ```
 
+Evaluation-requirements checklist:
+
+```text
+docs/EVALUATION_REQUIREMENTS_AR.md
+```
+
+Indexing, query processing, refinement, and ranking checklist:
+
+```text
+docs/IR_CORE_REQUIREMENTS_AR.md
+```
+
+Preprocessing and representation checklist:
+
+```text
+docs/PREPROCESSING_REPRESENTATION_REQUIREMENTS_AR.md
+```
+
 ## Run
 
 ```bat

@@ -8,6 +8,7 @@ from metrics import (
     average_precision,
     f1_score,
     mean_reciprocal_rank,
+    ndcg_at_k,
     precision_at_k,
     recall_at_k,
 )
@@ -31,3 +32,10 @@ def test_mrr_and_average_precision():
 
     assert mean_reciprocal_rank(retrieved, relevant) == 1 / 3
     assert round(average_precision(retrieved, relevant), 4) == 0.4167
+
+
+def test_ndcg_at_k():
+    retrieved = ["d3", "d1", "d2", "d4"]
+    relevant = ["d1", "d2"]
+
+    assert round(ndcg_at_k(retrieved, relevant, 4), 4) == 0.6934
