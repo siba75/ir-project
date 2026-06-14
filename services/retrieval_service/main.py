@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from collections import defaultdict, Counter
+from collections import defaultdict
 from sklearn.preprocessing import normalize
-from rank_bm25 import BM25Okapi
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 import re
@@ -29,22 +28,6 @@ app = FastAPI(
     description="Quora retrieval service for IR search and ranking",
     version="2.0.0"
 )
-
-
-class Document(BaseModel):
-    doc_id: str
-    text: str
-
-
-class SearchRequest(BaseModel):
-    query: str
-    documents: list[Document]
-    top_k: int = 10
-
-
-class BM25SearchRequest(SearchRequest):
-    k1: float = 1.5
-    b: float = 0.75
 
 
 class DatasetBM25SearchRequest(BaseModel):
@@ -92,46 +75,6 @@ def preprocess(text: str) -> list[str]:
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text.split()
-
-
-def build_inverted_index(documents: list[Document]):
-    inverted_index = defaultdict(dict)
-    documents_store = {}
-
-    for document in documents:
-        tokens = preprocess(document.text)
-        documents_store[document.doc_id] = document.text
-        term_frequencies = Counter(tokens)
-
-        for term, frequency in term_frequencies.items():
-            inverted_index[term][document.doc_id] = frequency
-
-    return inverted_index, documents_store
-
-
-def score_documents(query_tokens: list[str], inverted_index, documents_store):
-    scores = defaultdict(float)
-
-    for term in query_tokens:
-        if term in inverted_index:
-            for doc_id, frequency in inverted_index[term].items():
-                scores[doc_id] += frequency
-
-    ranked_results = sorted(
-        scores.items(),
-        key=lambda item: item[1],
-        reverse=True
-    )
-
-    return [
-        {
-            "rank": index + 1,
-            "doc_id": doc_id,
-            "score": score,
-            "text": documents_store[doc_id]
-        }
-        for index, (doc_id, score) in enumerate(ranked_results)
-    ]
 
 
 def lexical_scores(
@@ -290,59 +233,6 @@ def get_doc_text(doc_id: str, resources):
         return metadata["documents"][position]
     except (ValueError, KeyError, IndexError):
         return ""
-
-
-def get_dataset_documents(resources):
-    metadata = resources.get("metadata", {})
-
-    if metadata.get("documents") and metadata.get("doc_ids"):
-        return [str(item) for item in metadata["doc_ids"]], metadata["documents"]
-
-    documents_store = resources.get("documents_store", {})
-    doc_ids = list(documents_store.keys())
-    documents = [documents_store[doc_id] for doc_id in doc_ids]
-
-    return doc_ids, documents
-
-
-def indexed_search(query: str, top_k: int, dataset: str):
-    dataset = validate_dataset(dataset)
-    resources = load_dataset_resources(dataset)
-
-    query_tokens = preprocess(query)
-
-    if not query_tokens:
-        raise HTTPException(
-            status_code=400,
-            detail="Query has no valid searchable terms"
-        )
-
-    scores = lexical_scores(query_tokens, resources)
-    ranked_results = sorted(
-        scores.items(),
-        key=lambda item: item[1],
-        reverse=True
-    )
-
-    results = []
-
-    for rank, (doc_id, score) in enumerate(ranked_results[:top_k], start=1):
-        results.append({
-            "rank": rank,
-            "doc_id": doc_id,
-            "score": round(float(score), 6),
-            "text": get_doc_text(doc_id, resources)
-        })
-
-    return {
-        "query": query,
-        "processed_query": query_tokens,
-        "model": "Dataset Lexical Index Search",
-        "dataset": dataset,
-        "total_documents": resources["total_documents"],
-        "returned_results": len(results),
-        "results": results
-    }
 
 
 def dataset_tfidf_search(query: str, top_k: int, dataset: str):
@@ -747,69 +637,6 @@ def hybrid_serial_search(
     }
 
 
-def bm25_search(
-    query: str,
-    documents: list[Document],
-    top_k: int,
-    k1: float,
-    b: float
-):
-    if k1 <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="k1 must be greater than 0"
-        )
-
-    if b < 0 or b > 1:
-        raise HTTPException(
-            status_code=400,
-            detail="b must be between 0 and 1"
-        )
-
-    doc_ids = [doc.doc_id for doc in documents]
-    original_texts = [doc.text for doc in documents]
-    tokenized_documents = [preprocess(doc.text) for doc in documents]
-    tokenized_query = preprocess(query)
-
-    if not tokenized_query:
-        raise HTTPException(
-            status_code=400,
-            detail="Query has no valid searchable terms"
-        )
-
-    bm25 = BM25Okapi(tokenized_documents, k1=k1, b=b)
-    scores = bm25.get_scores(tokenized_query)
-    ranked_indices = scores.argsort()[::-1]
-
-    results = []
-
-    for rank, doc_index in enumerate(ranked_indices[:top_k], start=1):
-        score = float(scores[doc_index])
-
-        if score == 0:
-            continue
-
-        results.append({
-            "rank": rank,
-            "doc_id": doc_ids[doc_index],
-            "score": round(score, 6),
-            "text": original_texts[doc_index]
-        })
-
-    return {
-        "query": query,
-        "processed_query": tokenized_query,
-        "model": "BM25",
-        "parameters": {
-            "k1": k1,
-            "b": b
-        },
-        "total_documents": len(documents),
-        "returned_results": len(results),
-        "results": results
-    }
-
-
 @app.get("/")
 def home():
     return {
@@ -819,42 +646,13 @@ def home():
         "dataset": "quora",
         "source": "beir/quora/test",
         "available_models": [
-            "term_frequency_baseline",
             "tfidf_vsm",
             "bm25",
-            "indexed_search",
             "semantic_search",
             "hybrid_parallel_search",
             "hybrid_serial_search"
         ]
     }
-
-
-@app.post("/search")
-def search(request: SearchRequest):
-    query_tokens = preprocess(request.query)
-    inverted_index, documents_store = build_inverted_index(request.documents)
-    results = score_documents(query_tokens, inverted_index, documents_store)
-
-    return {
-        "query": request.query,
-        "processed_query": query_tokens,
-        "model": "Term Frequency Baseline",
-        "total_documents": len(request.documents),
-        "returned_results": len(results[:request.top_k]),
-        "results": results[:request.top_k]
-    }
-
-
-@app.post("/search/bm25")
-def search_bm25(request: BM25SearchRequest):
-    return bm25_search(
-        request.query,
-        request.documents,
-        request.top_k,
-        request.k1,
-        request.b
-    )
 
 
 @app.post("/search/dataset/tfidf")
@@ -874,15 +672,6 @@ def search_dataset_bm25(request: DatasetBM25SearchRequest):
         dataset=request.dataset,
         k1=request.k1,
         b=request.b
-    )
-
-
-@app.post("/search/indexed")
-def search_indexed(request: IndexedSearchRequest):
-    return indexed_search(
-        query=request.query,
-        top_k=request.top_k,
-        dataset=request.dataset
     )
 
 
