@@ -143,7 +143,7 @@ def run_search(mode, query, dataset_name):
     raise ValueError(f"Unsupported mode: {mode}")
 
 
-def evaluate_mode(dataset_name, mode, max_queries, use_after_features=False):
+def load_queries_and_qrels(dataset_name):
     dataset_dir = BASE_DIR / "datasets" / dataset_name
 
     with open(dataset_dir / "queries.json", "r", encoding="utf-8") as file:
@@ -152,13 +152,33 @@ def evaluate_mode(dataset_name, mode, max_queries, use_after_features=False):
     with open(dataset_dir / "qrels.json", "r", encoding="utf-8") as file:
         qrels = json.load(file)
 
+    return queries, qrels
+
+
+def select_query_ids(qrels, max_queries=None):
+    query_ids = list(qrels.keys())
+
+    if max_queries is None:
+        return query_ids
+
+    return query_ids[:max_queries]
+
+
+def evaluate_mode(
+    dataset_name,
+    mode,
+    queries,
+    qrels,
+    query_ids,
+    use_after_features=False
+):
     precision_scores = []
     recall_scores = []
     mrr_scores = []
     map_scores = []
     ndcg_scores = []
 
-    for counter, query_id in enumerate(list(qrels.keys())[:max_queries], start=1):
+    for counter, query_id in enumerate(query_ids, start=1):
         query_text = queries.get(query_id)
         relevant_docs = qrels.get(query_id, [])
 
@@ -239,14 +259,44 @@ def build_comparison(before_results, after_results):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", choices=["quora"])
-    parser.add_argument("--max-queries", type=int, default=200)
+    parser.add_argument(
+        "--max-queries",
+        type=int,
+        default=None,
+        help="Optional quick-test limit. Omit this to evaluate all qrels queries."
+    )
+    parser.add_argument(
+        "--all-queries",
+        action="store_true",
+        help="Evaluate all qrels queries. This can take many hours on Quora."
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output JSON path. Defaults to reports/<dataset>_evaluation_results.json."
+    )
     args = parser.parse_args()
+
+    queries, qrels = load_queries_and_qrels(args.dataset)
+    max_queries = None if args.all_queries or args.max_queries is None else args.max_queries
+    query_ids = select_query_ids(qrels, max_queries)
+    evaluation_scope = "all_qrels_queries" if max_queries is None else "sample"
+    total_qrel_judgments = sum(len(doc_ids) for doc_ids in qrels.values())
+
+    print("Dataset:", args.dataset)
+    print("Source dataset: beir/quora/test")
+    print("Total qrels queries:", len(qrels))
+    print("Total qrel judgments:", total_qrel_judgments)
+    print("Queries selected for evaluation:", len(query_ids))
+    print("Evaluation scope:", evaluation_scope)
 
     before_results = {
         mode: evaluate_mode(
             args.dataset,
             mode,
-            args.max_queries,
+            queries,
+            qrels,
+            query_ids,
             use_after_features=False
         )
         for mode in EVALUATION_MODES
@@ -256,7 +306,9 @@ def main():
         mode: evaluate_mode(
             args.dataset,
             mode,
-            args.max_queries,
+            queries,
+            qrels,
+            query_ids,
             use_after_features=True
         )
         for mode in EVALUATION_MODES
@@ -265,7 +317,10 @@ def main():
     all_results = {
         "dataset": args.dataset,
         "source_dataset": "beir/quora/test",
-        "evaluated_queries": args.max_queries,
+        "evaluation_scope": evaluation_scope,
+        "total_qrels_queries": len(qrels),
+        "total_qrel_judgments": total_qrel_judgments,
+        "evaluated_queries": len(query_ids),
         "top_k": TOP_K,
         "before_features": before_results,
         "after_features": after_results,
@@ -276,7 +331,11 @@ def main():
         }
     }
 
-    output_path = BASE_DIR / "reports" / f"{args.dataset}_evaluation_results.json"
+    output_path = (
+        Path(args.output)
+        if args.output
+        else BASE_DIR / "reports" / f"{args.dataset}_evaluation_results.json"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as file:

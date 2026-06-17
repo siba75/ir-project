@@ -1,6 +1,9 @@
 {
   "dataset": "quora",
   "source_dataset": "beir/quora/test",
+  "evaluation_scope": "sample",
+  "total_qrels_queries": 10000,
+  "total_qrel_judgments": 15675,
   "evaluated_queries": 200,
   "top_k": 10,
   "before_features": {

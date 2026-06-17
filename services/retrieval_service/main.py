@@ -3,8 +3,9 @@ from pydantic import BaseModel
 from collections import defaultdict
 from sklearn.preprocessing import normalize
 from functools import lru_cache
-from sentence_transformers import SentenceTransformer
+import certifi
 import re
+import ssl
 
 from dataset_manager import (
     load_dataset_resources,
@@ -28,6 +29,15 @@ app = FastAPI(
     description="Quora retrieval service for IR search and ranking",
     version="2.0.0"
 )
+
+
+def configure_ssl_for_ml_imports():
+    original_create_default_context = ssl.create_default_context
+
+    def create_certifi_context(*args, **kwargs):
+        return original_create_default_context(cafile=certifi.where())
+
+    ssl.create_default_context = create_certifi_context
 
 
 class DatasetBM25SearchRequest(BaseModel):
@@ -137,6 +147,9 @@ def normalize_vector_method(vector_method: str | None):
 
 @lru_cache(maxsize=2)
 def get_sentence_transformer_model(model_name: str):
+    configure_ssl_for_ml_imports()
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(model_name)
 
 

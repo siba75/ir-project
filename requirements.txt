@@ -10,6 +10,7 @@ sentence-transformers
 faiss-cpu
 ir-datasets
 datasets
+certifi
 nltk
 numpy
 pytest
