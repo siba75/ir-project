@@ -61,20 +61,20 @@ def test_query_refinement_supports_lemmatization():
 
 
 def test_ranking_orders_documents_by_score():
-    documents = [
-        retrieval_main.Document(doc_id="d1", text="programming job career"),
-        retrieval_main.Document(doc_id="d2", text="cooking recipe"),
-    ]
-    inverted_index, documents_store = retrieval_main.build_inverted_index(documents)
-    results = retrieval_main.score_documents(
-        ["programming", "job"],
-        inverted_index,
-        documents_store,
+    response = retrieval_main.dataset_bm25_search(
+        query="programming job",
+        top_k=5,
+        dataset="quora",
+        k1=1.5,
+        b=0.75,
     )
 
-    assert results[0]["doc_id"] == "d1"
+    results = response["results"]
+    scores = [item["score"] for item in results]
+
+    assert response["returned_results"] > 0
     assert results[0]["rank"] == 1
-    assert results[0]["score"] > 0
+    assert scores == sorted(scores, reverse=True)
 
 
 if __name__ == "__main__":

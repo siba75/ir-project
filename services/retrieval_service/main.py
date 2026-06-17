@@ -367,6 +367,7 @@ def semantic_search(query: str, top_k: int, dataset: str):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     resources = load_dataset_resources(dataset)
+    metadata = resources.get("metadata", {})
     scores = semantic_scores(query, resources, top_k)
 
     ranked_results = sorted(
@@ -388,7 +389,8 @@ def semantic_search(query: str, top_k: int, dataset: str):
     return {
         "query": query,
         "model": "Semantic Search using FAISS Vector Index",
-        "vector_method": get_vector_method(resources),
+        "vector_method": metadata.get("vector_method", "N/A"),
+        "embedding_dimension": metadata.get("embedding_dimension", "N/A"),
         "dataset": dataset,
         "total_documents": resources["total_documents"],
         "returned_results": len(results),

@@ -598,6 +598,20 @@ with tab_results:
                     "semantic_rerank_score"
                 )
 
+                mode_normalized = retrieval_mode.lower()
+
+                if mode_normalized == "semantic":
+                    semantic_score = final_score
+                    bm25_score = 0
+
+                elif mode_normalized == "bm25":
+                    bm25_score = final_score
+                    semantic_score = 0
+
+                elif mode_normalized == "tfidf":
+                    bm25_score = 0
+                    semantic_score = 0
+
                 st.markdown("<div class='result-card'>", unsafe_allow_html=True)
 
                 st.markdown(

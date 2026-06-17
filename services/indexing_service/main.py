@@ -1,27 +1,19 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from collections import defaultdict, Counter
+from functools import lru_cache
+from pathlib import Path
+import json
 import re
+
+from fastapi import FastAPI, HTTPException
+
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+QUORA_INDEX_PATH = BASE_DIR / "indexes" / "quora" / "inverted_index.json"
 
 app = FastAPI(
     title="IR Indexing Service",
-    description="Service for building and managing inverted indexes",
-    version="1.0.0"
+    description="Service for inspecting the prebuilt Quora inverted index",
+    version="2.0.0"
 )
-
-inverted_index = defaultdict(dict)
-documents_store = {}
-document_lengths = {}
-total_documents = 0
-
-
-class Document(BaseModel):
-    doc_id: str
-    text: str
-
-
-class IndexRequest(BaseModel):
-    documents: list[Document]
 
 
 def preprocess_for_indexing(text: str) -> list[str]:
@@ -32,68 +24,60 @@ def preprocess_for_indexing(text: str) -> list[str]:
     return text.split()
 
 
+@lru_cache(maxsize=1)
+def load_quora_index():
+    if not QUORA_INDEX_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quora inverted index not found at {QUORA_INDEX_PATH}"
+        )
+
+    with open(QUORA_INDEX_PATH, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
 @app.get("/")
 def home():
     return {
         "service": "Indexing Service",
-        "status": "running"
-    }
-
-
-@app.post("/index/build")
-def build_index(request: IndexRequest):
-    global inverted_index, documents_store, document_lengths, total_documents
-
-    if not request.documents:
-        raise HTTPException(status_code=400, detail="No documents provided")
-
-    inverted_index = defaultdict(dict)
-    documents_store = {}
-    document_lengths = {}
-
-    for document in request.documents:
-        tokens = preprocess_for_indexing(document.text)
-
-        documents_store[document.doc_id] = document.text
-        document_lengths[document.doc_id] = len(tokens)
-
-        term_frequencies = Counter(tokens)
-
-        for term, frequency in term_frequencies.items():
-            inverted_index[term][document.doc_id] = frequency
-
-    total_documents = len(request.documents)
-
-    return {
-        "message": "Index built successfully",
-        "total_documents": total_documents,
-        "unique_terms": len(inverted_index),
-        "document_lengths": document_lengths
+        "status": "running",
+        "dataset": "quora",
+        "source": "beir/quora/test",
+        "index_type": "prebuilt_inverted_index"
     }
 
 
 @app.get("/index/stats")
 def index_stats():
+    index_data = load_quora_index()
+
     return {
-        "total_documents": total_documents,
-        "unique_terms": len(inverted_index),
-        "indexed_documents": list(documents_store.keys())
+        "dataset": index_data.get("dataset", "quora"),
+        "source_dataset": index_data.get("source_dataset", "beir/quora/test"),
+        "total_documents": index_data.get("total_documents", 0),
+        "unique_terms": index_data.get("unique_terms", 0),
+        "index_path": str(QUORA_INDEX_PATH),
     }
 
 
 @app.get("/index/term/{term}")
 def get_term_postings(term: str):
-    term = term.lower()
+    index_data = load_quora_index()
+    normalized_terms = preprocess_for_indexing(term)
 
-    if term not in inverted_index:
-        return {
-            "term": term,
-            "document_frequency": 0,
-            "postings": {}
-        }
+    if not normalized_terms:
+        raise HTTPException(
+            status_code=400,
+            detail="Term has no valid searchable tokens"
+        )
+
+    normalized_term = normalized_terms[0]
+    inverted_index = index_data.get("inverted_index", {})
+    postings = inverted_index.get(normalized_term, {})
 
     return {
-        "term": term,
-        "document_frequency": len(inverted_index[term]),
-        "postings": inverted_index[term]
+        "dataset": "quora",
+        "term": normalized_term,
+        "document_frequency": len(postings),
+        "postings": postings
     }
