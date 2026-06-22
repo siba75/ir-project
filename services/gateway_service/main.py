@@ -258,6 +258,7 @@ async def full_search(request: FullSearchRequest):
         "retrieval_mode": request.retrieval_mode,
         "retrieval_model": retrieval_data.get("model"),
         "vector_method": retrieval_data.get("vector_method"),
+        "storage": retrieval_data.get("storage", {}),
         "pipeline": {
             "refinement_enabled": True,
             "retrieval_enabled": True,

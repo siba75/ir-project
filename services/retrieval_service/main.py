@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from collections import defaultdict
 from sklearn.preprocessing import normalize
 from functools import lru_cache
+from pathlib import Path
 import certifi
+import numpy as np
+import os
 import re
 import ssl
 
@@ -11,6 +13,9 @@ from dataset_manager import (
     load_dataset_resources,
     validate_dataset
 )
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+LOCAL_TEMP_DIR = BASE_DIR / "reports" / "runtime_cache" / "temp"
 
 VECTOR_METHOD_ALIASES = {
     "lsa": "lsa_tfidf_svd",
@@ -32,6 +37,11 @@ app = FastAPI(
 
 
 def configure_ssl_for_ml_imports():
+    LOCAL_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("TMP", str(LOCAL_TEMP_DIR))
+    os.environ.setdefault("TEMP", str(LOCAL_TEMP_DIR))
+    os.environ.setdefault("TMPDIR", str(LOCAL_TEMP_DIR))
+
     original_create_default_context = ssl.create_default_context
 
     def create_certifi_context(*args, **kwargs):
@@ -233,10 +243,13 @@ def get_vector_method(resources):
 
 
 def get_doc_text(doc_id: str, resources):
-    documents_store = resources.get("documents_store", {})
+    document_store = resources.get("document_store")
 
-    if doc_id in documents_store:
-        return documents_store[doc_id]
+    if document_store:
+        text = document_store.get(doc_id)
+
+        if text:
+            return text
 
     metadata = resources.get("metadata", {})
     doc_ids = [str(item) for item in metadata.get("doc_ids", [])]
@@ -255,41 +268,43 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     resources = load_dataset_resources(dataset)
-    query_tokens = preprocess(query)
+    tfidf_data = resources.get("tfidf", {})
+    vectorizer = tfidf_data.get("vectorizer")
+    matrix = tfidf_data.get("matrix")
+    doc_ids = tfidf_data.get("doc_ids", resources["doc_ids"])
 
-    if not query_tokens:
+    if vectorizer is None or matrix is None:
+        raise HTTPException(
+            status_code=500,
+            detail="TF-IDF resource is missing. Run prepare_submission_resources.py."
+        )
+
+    query_vector = vectorizer.transform([query])
+
+    if query_vector.nnz == 0:
         raise HTTPException(
             status_code=400,
             detail="Query has no valid searchable terms"
         )
 
-    bm25 = resources["bm25"]
-    doc_ids = resources["doc_ids"]
-    scores = defaultdict(float)
+    raw_scores = (matrix @ query_vector.T).toarray().ravel()
+    candidate_count = min(top_k, raw_scores.shape[0])
 
-    for doc_index, term_frequencies in enumerate(bm25.doc_freqs):
-        score = 0.0
-
-        for term in query_tokens:
-            term_frequency = term_frequencies.get(term, 0)
-
-            if term_frequency:
-                score += float(term_frequency) * float(
-                    bm25.idf.get(term, 0.0)
-                )
-
-        if score > 0:
-            scores[str(doc_ids[doc_index])] = score
-
-    ranked_results = sorted(
-        scores.items(),
-        key=lambda item: item[1],
-        reverse=True
-    )
+    if candidate_count == 0:
+        ranked_indices = []
+    else:
+        candidate_indices = np.argpartition(raw_scores, -candidate_count)[-candidate_count:]
+        ranked_indices = candidate_indices[np.argsort(raw_scores[candidate_indices])[::-1]]
 
     results = []
 
-    for rank, (doc_id, score) in enumerate(ranked_results[:top_k], start=1):
+    for rank, doc_index in enumerate(ranked_indices, start=1):
+        score = raw_scores[doc_index]
+
+        if score <= 0:
+            continue
+
+        doc_id = str(doc_ids[doc_index])
         results.append({
             "rank": rank,
             "doc_id": doc_id,
@@ -299,9 +314,9 @@ def dataset_tfidf_search(query: str, top_k: int, dataset: str):
 
     return {
         "query": query,
-        "processed_query": query_tokens,
-        "model": "Precomputed TF-IDF over BM25 term statistics",
+        "model": "sklearn TfidfVectorizer cosine similarity",
         "dataset": dataset,
+        "storage": resources.get("storage", {}),
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
         "results": results
@@ -361,12 +376,13 @@ def dataset_bm25_search(
     return {
         "query": query,
         "processed_query": query_tokens,
-        "model": "Precomputed BM25",
+        "model": "rank_bm25 BM25Okapi",
         "parameters": {
             "k1": k1,
             "b": b
         },
         "dataset": dataset,
+        "storage": resources.get("storage", {}),
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
         "results": results
@@ -405,6 +421,7 @@ def semantic_search(query: str, top_k: int, dataset: str):
         "vector_method": metadata.get("vector_method", "N/A"),
         "embedding_dimension": metadata.get("embedding_dimension", "N/A"),
         "dataset": dataset,
+        "storage": resources.get("storage", {}),
         "total_documents": resources["total_documents"],
         "returned_results": len(results),
         "results": results
@@ -504,6 +521,7 @@ def hybrid_search(
         "model": "Hybrid Parallel Search (BM25 + Semantic FAISS Score Fusion)",
         "vector_method": get_vector_method(resources),
         "dataset": dataset,
+        "storage": resources.get("storage", {}),
         "weights": {
             "bm25_weight": bm25_weight,
             "semantic_weight": semantic_weight
@@ -580,6 +598,7 @@ def hybrid_serial_search(
                      "(BM25 Candidate Generation → Semantic Re-ranking)",
             "vector_method": get_vector_method(resources),
             "dataset": dataset,
+            "storage": resources.get("storage", {}),
             "parameters": {
                 "k1": k1,
                 "b": b
@@ -641,6 +660,7 @@ def hybrid_serial_search(
                  "(BM25 Candidate Generation → Semantic Re-ranking)",
         "vector_method": get_vector_method(resources),
         "dataset": dataset,
+        "storage": resources.get("storage", {}),
         "parameters": {
             "k1": k1,
             "b": b
@@ -660,6 +680,12 @@ def home():
         "version": "2.0.0",
         "dataset": "quora",
         "source": "beir/quora/test",
+        "storage": {
+            "documents": "SQLite document store",
+            "indexes": "Compressed resource files with runtime cache",
+            "tfidf": "sklearn TfidfVectorizer",
+            "bm25": "rank_bm25 BM25Okapi"
+        },
         "available_models": [
             "tfidf_vsm",
             "bm25",

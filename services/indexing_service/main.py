@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+import gzip
 import json
 import re
 
@@ -7,7 +8,8 @@ from fastapi import FastAPI, HTTPException
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-QUORA_INDEX_PATH = BASE_DIR / "indexes" / "quora" / "inverted_index.json"
+QUORA_INDEX_PATH = BASE_DIR / "indexes" / "quora" / "inverted_index.json.gz"
+QUORA_INDEX_FALLBACK_PATH = BASE_DIR / "indexes" / "quora" / "inverted_index.json"
 
 app = FastAPI(
     title="IR Indexing Service",
@@ -26,13 +28,17 @@ def preprocess_for_indexing(text: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def load_quora_index():
-    if not QUORA_INDEX_PATH.exists():
+    index_path = QUORA_INDEX_PATH if QUORA_INDEX_PATH.exists() else QUORA_INDEX_FALLBACK_PATH
+
+    if not index_path.exists():
         raise HTTPException(
             status_code=404,
             detail=f"Quora inverted index not found at {QUORA_INDEX_PATH}"
         )
 
-    with open(QUORA_INDEX_PATH, "r", encoding="utf-8") as file:
+    opener = gzip.open if index_path.suffix == ".gz" else open
+
+    with opener(index_path, "rt", encoding="utf-8") as file:
         return json.load(file)
 
 
@@ -43,7 +49,8 @@ def home():
         "status": "running",
         "dataset": "quora",
         "source": "beir/quora/test",
-        "index_type": "prebuilt_inverted_index"
+        "index_type": "compressed_prebuilt_inverted_index",
+        "cache": "lru_cache(maxsize=1)"
     }
 
 
@@ -56,7 +63,8 @@ def index_stats():
         "source_dataset": index_data.get("source_dataset", "beir/quora/test"),
         "total_documents": index_data.get("total_documents", 0),
         "unique_terms": index_data.get("unique_terms", 0),
-        "index_path": str(QUORA_INDEX_PATH),
+        "index_path": str(QUORA_INDEX_PATH if QUORA_INDEX_PATH.exists() else QUORA_INDEX_FALLBACK_PATH),
+        "compressed": QUORA_INDEX_PATH.exists(),
     }
 
 

@@ -1,66 +1,66 @@
 {
   "dataset": "quora",
   "source_dataset": "beir/quora/test",
-  "evaluation_scope": "sample",
+  "evaluation_scope": "all_qrels_queries",
   "total_qrels_queries": 10000,
   "total_qrel_judgments": 15675,
-  "evaluated_queries": 200,
+  "evaluated_queries": 10000,
   "top_k": 10,
   "before_features": {
     "tfidf": {
       "dataset": "quora",
       "retrieval_mode": "tfidf",
       "phase": "before_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.079,
-      "mean_recall@10": 0.5044,
-      "mrr": 0.3271,
-      "map": 0.2907,
-      "ndcg@10": 0.3552
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.0696,
+      "mean_recall@10": 0.5516,
+      "mrr": 0.3372,
+      "map": 0.3147,
+      "ndcg@10": 0.3791
     },
     "bm25": {
       "dataset": "quora",
       "retrieval_mode": "bm25",
       "phase": "before_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.136,
-      "mean_recall@10": 0.7691,
-      "mrr": 0.6812,
-      "map": 0.5875,
-      "ndcg@10": 0.6625
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1131,
+      "mean_recall@10": 0.8458,
+      "mrr": 0.7382,
+      "map": 0.6925,
+      "ndcg@10": 0.7436
     },
     "semantic": {
       "dataset": "quora",
       "retrieval_mode": "semantic",
       "phase": "before_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1825,
-      "mean_recall@10": 0.8811,
-      "mrr": 0.8142,
-      "map": 0.7346,
-      "ndcg@10": 0.8027
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1337,
+      "mean_recall@10": 0.9503,
+      "mrr": 0.8673,
+      "map": 0.8363,
+      "ndcg@10": 0.8754
     },
     "hybrid_parallel": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_parallel",
       "phase": "before_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1695,
-      "mean_recall@10": 0.8619,
-      "mrr": 0.7933,
-      "map": 0.7147,
-      "ndcg@10": 0.7821
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.132,
+      "mean_recall@10": 0.9479,
+      "mrr": 0.8573,
+      "map": 0.8224,
+      "ndcg@10": 0.8654
     },
     "hybrid_serial": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_serial",
       "phase": "before_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1675,
-      "mean_recall@10": 0.8403,
-      "mrr": 0.795,
-      "map": 0.7133,
-      "ndcg@10": 0.7766
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1262,
+      "mean_recall@10": 0.9121,
+      "mrr": 0.8542,
+      "map": 0.8156,
+      "ndcg@10": 0.852
     }
   },
   "after_features": {
@@ -68,93 +68,93 @@
       "dataset": "quora",
       "retrieval_mode": "tfidf",
       "phase": "after_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.075,
-      "mean_recall@10": 0.4839,
-      "mrr": 0.3158,
-      "map": 0.2828,
-      "ndcg@10": 0.3434
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.0685,
+      "mean_recall@10": 0.5434,
+      "mrr": 0.3316,
+      "map": 0.3096,
+      "ndcg@10": 0.3731
     },
     "bm25": {
       "dataset": "quora",
       "retrieval_mode": "bm25",
       "phase": "after_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.135,
-      "mean_recall@10": 0.7666,
-      "mrr": 0.6773,
-      "map": 0.5848,
-      "ndcg@10": 0.6594
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1125,
+      "mean_recall@10": 0.8431,
+      "mrr": 0.7336,
+      "map": 0.6882,
+      "ndcg@10": 0.7396
     },
     "semantic": {
       "dataset": "quora",
       "retrieval_mode": "semantic",
       "phase": "after_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1805,
-      "mean_recall@10": 0.8754,
-      "mrr": 0.8123,
-      "map": 0.7316,
-      "ndcg@10": 0.7983
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1335,
+      "mean_recall@10": 0.9487,
+      "mrr": 0.8633,
+      "map": 0.8328,
+      "ndcg@10": 0.8723
     },
     "hybrid_parallel": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_parallel",
       "phase": "after_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1675,
-      "mean_recall@10": 0.8608,
-      "mrr": 0.7906,
-      "map": 0.7127,
-      "ndcg@10": 0.7792
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1318,
+      "mean_recall@10": 0.9465,
+      "mrr": 0.8556,
+      "map": 0.8203,
+      "ndcg@10": 0.8636
     },
     "hybrid_serial": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_serial",
       "phase": "after_features",
-      "evaluated_queries": 200,
-      "mean_precision@10": 0.1655,
-      "mean_recall@10": 0.8391,
-      "mrr": 0.7905,
-      "map": 0.7074,
-      "ndcg@10": 0.7711
+      "evaluated_queries": 10000,
+      "mean_precision@10": 0.1257,
+      "mean_recall@10": 0.9091,
+      "mrr": 0.8505,
+      "map": 0.8119,
+      "ndcg@10": 0.8484
     }
   },
   "comparison": {
     "tfidf": {
-      "precision@10_delta": -0.004,
-      "recall@10_delta": -0.0205,
-      "mrr_delta": -0.0113,
-      "map_delta": -0.0079,
-      "ndcg@10_delta": -0.0118
+      "precision@10_delta": -0.0011,
+      "recall@10_delta": -0.0082,
+      "mrr_delta": -0.0056,
+      "map_delta": -0.0051,
+      "ndcg@10_delta": -0.006
     },
     "bm25": {
-      "precision@10_delta": -0.001,
-      "recall@10_delta": -0.0025,
-      "mrr_delta": -0.0039,
-      "map_delta": -0.0027,
-      "ndcg@10_delta": -0.0031
+      "precision@10_delta": -0.0006,
+      "recall@10_delta": -0.0027,
+      "mrr_delta": -0.0046,
+      "map_delta": -0.0043,
+      "ndcg@10_delta": -0.004
     },
     "semantic": {
-      "precision@10_delta": -0.002,
-      "recall@10_delta": -0.0057,
-      "mrr_delta": -0.0019,
-      "map_delta": -0.003,
-      "ndcg@10_delta": -0.0044
+      "precision@10_delta": -0.0002,
+      "recall@10_delta": -0.0016,
+      "mrr_delta": -0.004,
+      "map_delta": -0.0035,
+      "ndcg@10_delta": -0.0031
     },
     "hybrid_parallel": {
-      "precision@10_delta": -0.002,
-      "recall@10_delta": -0.0011,
-      "mrr_delta": -0.0027,
-      "map_delta": -0.002,
-      "ndcg@10_delta": -0.0029
+      "precision@10_delta": -0.0002,
+      "recall@10_delta": -0.0014,
+      "mrr_delta": -0.0017,
+      "map_delta": -0.0021,
+      "ndcg@10_delta": -0.0018
     },
     "hybrid_serial": {
-      "precision@10_delta": -0.002,
-      "recall@10_delta": -0.0012,
-      "mrr_delta": -0.0045,
-      "map_delta": -0.0059,
-      "ndcg@10_delta": -0.0055
+      "precision@10_delta": -0.0005,
+      "recall@10_delta": -0.003,
+      "mrr_delta": -0.0037,
+      "map_delta": -0.0037,
+      "ndcg@10_delta": -0.0036
     }
   },
   "feature_notes": {

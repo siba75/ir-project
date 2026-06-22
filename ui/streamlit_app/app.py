@@ -38,6 +38,16 @@ def load_evaluation_results():
     return results
 
 
+def load_resource_manifest():
+    manifest_path = BASE_DIR / "indexes" / "quora" / "resource_manifest.json"
+
+    if not manifest_path.exists():
+        return {}
+
+    with open(manifest_path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
 def metrics_table(report_section):
     return pd.DataFrame([
         {
@@ -68,6 +78,7 @@ def comparison_table(comparison_section):
 
 
 EVALUATION_RESULTS = load_evaluation_results()
+RESOURCE_MANIFEST = load_resource_manifest()
 st.set_page_config(
     page_title="IR Search Engine",
     page_icon="🔎",
@@ -345,6 +356,7 @@ with st.sidebar:
 
     st.metric("Dataset", "Quora")
     st.caption("Fixed dataset: beir/quora/test")
+    st.caption("Documents: SQLite DB · Indexes: compressed cache files")
     dataset_label = "Quora"
     dataset = "quora"
 
@@ -573,6 +585,22 @@ with tab_results:
         mode_col3.metric("Retrieval Model", data.get("retrieval_model", "N/A"))
         mode_col4.metric("Vector Method", data.get("vector_method", "N/A"))
 
+        storage = data.get("storage", {})
+        st.subheader("Storage and Cache")
+        storage_col1, storage_col2, storage_col3 = st.columns(3)
+        storage_col1.metric(
+            "Document Store",
+            "SQLite" if storage.get("documents_in_sqlite") else "Unavailable"
+        )
+        storage_col2.metric(
+            "Compressed Indexes",
+            "Enabled" if storage.get("compressed_indexes") else "Fallback"
+        )
+        storage_col3.metric(
+            "Resource Cache",
+            "Enabled" if storage.get("resource_cache") else "N/A"
+        )
+
         st.subheader("Top Matching Terms")
 
         terms = extract_top_terms(data.get("refined_query", ""))
@@ -624,13 +652,14 @@ with tab_results:
                     unsafe_allow_html=True
                 )
 
+                full_text = result.get("text", "")
+
                 highlighted_text = highlight_terms(
-                    truncate_text(result.get("text", "")),
+                    full_text,
                     data.get("refined_query", query)
                 )
 
                 st.markdown(highlighted_text, unsafe_allow_html=True)
-
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Final Score", final_score)
                 c2.metric("BM25 Score", bm25_score)
@@ -752,6 +781,10 @@ with tab_evaluation:
             )
             q2.metric("Top K", report.get("top_k", 10))
 
+            q3, q4 = st.columns(2)
+            q3.metric("Total qrels Queries", report.get("total_qrels_queries", 0))
+            q4.metric("Evaluation Scope", report.get("evaluation_scope", "N/A"))
+
             st.subheader("Before Additional Features")
             st.dataframe(before_df, use_container_width=True)
             st.bar_chart(before_df.set_index("Mode")[["Precision@10", "Recall@10", "MAP", "nDCG@10"]])
@@ -763,6 +796,25 @@ with tab_evaluation:
             st.subheader("Before vs After Delta")
             st.dataframe(delta_df, use_container_width=True)
             st.bar_chart(delta_df.set_index("Mode"))
+
+            st.subheader("MAP and nDCG Focus")
+            focus_df = pd.concat(
+                [
+                    before_df.assign(Phase="Before"),
+                    after_df.assign(Phase="After"),
+                ],
+                ignore_index=True,
+            )
+            st.dataframe(
+                focus_df[["Phase", "Mode", "Evaluated Queries", "MAP", "nDCG@10"]],
+                use_container_width=True
+            )
+            st.bar_chart(
+                focus_df.pivot(index="Mode", columns="Phase", values="MAP")
+            )
+            st.line_chart(
+                focus_df.pivot(index="Mode", columns="Phase", values="nDCG@10")
+            )
 
         else:
             selected_eval_mode = st.selectbox(
@@ -839,6 +891,7 @@ Ranked Results
             "retrieval_mode": data.get("retrieval_mode"),
             "retrieval_model": data.get("retrieval_model"),
             "vector_method": data.get("vector_method"),
+            "storage": data.get("storage", {}),
             "configuration": {
                 "dataset": dataset,
                 "top_k": top_k,
@@ -857,6 +910,12 @@ Ranked Results
         })
     else:
         st.info("Run a search to view the latest pipeline configuration.")
+
+    st.subheader("Submission Resources")
+    if RESOURCE_MANIFEST:
+        st.json(RESOURCE_MANIFEST)
+    else:
+        st.info("Resource manifest not found. Run prepare_submission_resources.py.")
 
 
 with tab_export:

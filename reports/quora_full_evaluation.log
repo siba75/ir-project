@@ -1,0 +1,11 @@
+Dataset: quora
+Source dataset: beir/quora/test
+Total qrels queries: 10000
+Total qrel judgments: 15675
+Queries selected for evaluation: 10000
+Evaluation scope: all_qrels_queries
+Checkpoint directory: D:\ir-project\reports\evaluation_checkpoints
+[1/10000] quora/before/tfidf/46
+[100/10000] quora/before/tfidf/4837
+[200/10000] quora/before/tfidf/9567
+[300/10000] quora/before/tfidf/14468
