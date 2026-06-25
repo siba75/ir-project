@@ -61,6 +61,10 @@
 - التحكم بأوزان Hybrid Parallel:
   - `BM25 Weight`
   - `Semantic Weight`
+- تجربة الميزات الإضافية بشكل مستقل:
+  - `Query Expansion` تشغيل/إيقاف.
+  - `Personalization` تشغيل/إيقاف.
+  - `Result Clustering` تشغيل/إيقاف.
 - عرض charts للـ:
   - score comparison
   - ranking curve

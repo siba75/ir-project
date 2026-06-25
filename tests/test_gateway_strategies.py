@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 GATEWAY_DIR = BASE_DIR / "services" / "gateway_service"
 sys.path.insert(0, str(GATEWAY_DIR))
 
-from main import FullSearchRequest, RETRIEVAL_STRATEGIES  # noqa: E402
+from main import FullSearchRequest, RETRIEVAL_STRATEGIES, build_personalized_query  # noqa: E402
 
 
 def test_gateway_has_strategy_for_each_supported_mode():
@@ -48,3 +48,25 @@ def test_hybrid_parallel_strategy_builds_expected_payload():
         "b": 0.5,
         "dataset": "quora",
     }
+
+
+def test_personalization_builds_ir_vector_profile():
+    personalized_query, terms, profile = build_personalized_query(
+        "best training shoes",
+        [
+            "football workout shoes",
+            "running shoes for sport",
+            "python programming job",
+            "basketball fitness training",
+        ],
+    )
+
+    assert profile["enabled"] is True
+    assert profile["history_queries_used"] == 4
+    assert profile["query_vector_weight"] == 0.70
+    assert profile["interest_vector_weight"] == 0.30
+    assert terms
+    assert profile["interest_terms"]
+    assert profile["similar_history_queries"]
+    assert profile["query_suggestions"]
+    assert personalized_query.startswith("best training shoes")
