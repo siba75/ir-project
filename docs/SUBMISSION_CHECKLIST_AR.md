@@ -67,6 +67,25 @@
   - clustering
   - evaluation before/after
 
+## Personalization and Query Suggestion
+
+- عند تفعيل `Personalization` من الواجهة، النظام يستخدم سجل البحث السابق كـ IR mini-system:
+  - يأخذ آخر queries من history.
+  - يحول history والـ query الحالية إلى TF-IDF vectors.
+  - يحسب similarity بين query الحالية وqueries السابقة.
+  - يبني `interest vector` للمستخدم بوزن similarity + recency.
+  - يدمج `query vector` مع `interest vector`:
+    - `query_vector_weight = 0.70`
+    - `interest_vector_weight = 0.30`
+  - يستخرج terms من الـ combined vector ويضيفها خلف الكواليس للـ query.
+  - يولد query suggestions مبنية على تشابه history وليس بحث نصي بسيط.
+- الواجهة تعرض:
+  - User Interest Terms
+  - Terms Selected After Query-Interest Fusion
+  - Most Similar History Queries
+  - IR-based Query Suggestions
+  - Charts للأوزان والتشابه.
+
 ## SOA
 
 - الخدمات منفصلة:
@@ -77,4 +96,3 @@
   - refinement service
   - gateway service
   - Streamlit UI
-

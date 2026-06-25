@@ -381,8 +381,7 @@ with st.sidebar:
 
     retrieval_mode = retrieval_mode_options[retrieval_mode_label]
 
-    top_k = st.slider("Number of Results", 1, 20, 5)
-
+    top_k = st.slider("Number of Results", 1, 20, 10)
     if retrieval_mode in ["bm25", "hybrid_parallel", "hybrid_serial"]:
         bm25_k1 = st.slider("BM25 k1", 0.1, 3.0, 1.5, 0.1)
         bm25_b = st.slider("BM25 b", 0.0, 1.0, 0.75, 0.05)
@@ -510,9 +509,9 @@ if search_clicked:
             "use_stemming": use_stemming,
             "use_expansion": use_expansion,
             "use_personalization": use_personalization,
-            "user_history": [
+        "user_history": [
                 item["query"]
-                for item in st.session_state.search_history[-5:]
+                for item in st.session_state.search_history[-20:]
             ]
         }
 
@@ -742,6 +741,56 @@ with tab_analytics:
         m2.metric("Average Score", round(avg_score, 4))
         m3.metric("Best Score", round(max_score, 4))
         m4.metric("Lowest Score", round(min_score, 4))
+
+        personalization_profile = (
+            data.get("additional_features", {})
+            .get("personalization_profile", {})
+        )
+
+        if personalization_profile.get("enabled"):
+            st.subheader("Personalization IR Profile")
+
+            p1, p2, p3 = st.columns(3)
+            p1.metric(
+                "History Queries Used",
+                personalization_profile.get("history_queries_used", 0)
+            )
+            p2.metric(
+                "Query Vector Weight",
+                personalization_profile.get("query_vector_weight", 0)
+            )
+            p3.metric(
+                "Interest Vector Weight",
+                personalization_profile.get("interest_vector_weight", 0)
+            )
+
+            interest_terms = personalization_profile.get("interest_terms", [])
+            combined_terms = personalization_profile.get("combined_terms", [])
+            similar_history = personalization_profile.get("similar_history_queries", [])
+
+            if interest_terms:
+                interest_df = pd.DataFrame(interest_terms)
+                st.subheader("User Interest Terms from Search History")
+                st.dataframe(interest_df, use_container_width=True)
+                st.bar_chart(interest_df.set_index("term")["score"])
+
+            if combined_terms:
+                combined_df = pd.DataFrame(combined_terms)
+                st.subheader("Terms Selected After Query-Interest Fusion")
+                st.dataframe(combined_df, use_container_width=True)
+                st.bar_chart(combined_df.set_index("term")["score"])
+
+            if similar_history:
+                similar_df = pd.DataFrame(similar_history)
+                st.subheader("Most Similar History Queries")
+                st.dataframe(similar_df, use_container_width=True)
+                st.bar_chart(similar_df.set_index("query")["similarity"])
+
+            suggestions = personalization_profile.get("query_suggestions", [])
+
+            if suggestions:
+                st.subheader("IR-based Query Suggestions")
+                st.write(" ".join([f"`{suggestion}`" for suggestion in suggestions]))
     else:
         st.info("Run a search to view analytics.")
 
@@ -892,6 +941,7 @@ Ranked Results
             "retrieval_model": data.get("retrieval_model"),
             "vector_method": data.get("vector_method"),
             "storage": data.get("storage", {}),
+            "additional_features": data.get("additional_features", {}),
             "configuration": {
                 "dataset": dataset,
                 "top_k": top_k,

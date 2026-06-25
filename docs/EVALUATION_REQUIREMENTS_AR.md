@@ -88,7 +88,7 @@ reports/quora_evaluation_results.json
 ## تشغيل تقييم سريع للتجريب فقط
 
 ```bash
-python services/evaluation_service/evaluate_dataset_direct.py quora --max-queries 200
+python services/evaluation_service/evaluate_dataset_direct.py quora --all-queries
 ```
 
 هذا للتجريب فقط وليس التقرير النهائي المطلوب للمقابلة، لأن المعيدة طلبت استخدام كل qrels queries.
