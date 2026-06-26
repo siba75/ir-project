@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 from typing import List
 
 from metrics import (
@@ -14,14 +15,39 @@ from metrics import (
 app = FastAPI(
     title="IR Evaluation Service",
     description="Service for evaluating retrieval models",
-    version="1.0.0"
+    version="1.0.0",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+
+MAX_DOCS_LIST_SIZE = 10000
+MAX_K = 1000
 
 
 class EvaluationRequest(BaseModel):
     retrieved_docs: List[str]
     relevant_docs: List[str]
     k: int = 10
+
+    @field_validator("retrieved_docs", "relevant_docs")
+    @classmethod
+    def docs_not_too_large(cls, v: List[str]) -> List[str]:
+        if len(v) > MAX_DOCS_LIST_SIZE:
+            raise ValueError(f"document list exceeds maximum size of {MAX_DOCS_LIST_SIZE}")
+        return v
+
+    @field_validator("k")
+    @classmethod
+    def k_in_range(cls, v: int) -> int:
+        if v < 1 or v > MAX_K:
+            raise ValueError(f"k must be between 1 and {MAX_K}")
+        return v
 
 
 @app.get("/")

@@ -23,10 +23,15 @@ async def post_json(client: httpx.AsyncClient, url: str, payload: dict, label: s
         response = await client.post(url, json=payload)
         response.raise_for_status()
         return response.json()
-    except Exception as error:
+    except httpx.HTTPStatusError as error:
         raise HTTPException(
-            status_code=500,
-            detail=f"{label} service error: {str(error)}",
+            status_code=502,
+            detail=f"{label} service returned an error",
+        ) from error
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail=f"{label} service is unavailable",
         )
 
 

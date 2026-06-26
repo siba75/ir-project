@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 SUPPORTED_DATASETS = ["quora"]
@@ -10,6 +10,11 @@ SUPPORTED_RETRIEVAL_MODES = [
     "hybrid_parallel",
     "hybrid_serial",
 ]
+
+
+MAX_QUERY_LENGTH = 2000
+MAX_TOP_K = 100
+MAX_HISTORY_SIZE = 50
 
 
 class FullSearchRequest(BaseModel):
@@ -33,6 +38,18 @@ class FullSearchRequest(BaseModel):
     use_personalization: bool = False
     user_history: list[str] = []
 
+    @field_validator("query")
+    @classmethod
+    def query_not_too_long(cls, v: str) -> str:
+        if len(v) > MAX_QUERY_LENGTH:
+            raise ValueError(f"query exceeds maximum length of {MAX_QUERY_LENGTH} characters")
+        return v
+
+    @field_validator("user_history")
+    @classmethod
+    def history_not_too_large(cls, v: list[str]) -> list[str]:
+        return v[-MAX_HISTORY_SIZE:]
+
 
 def validate_request(request: FullSearchRequest):
     request.dataset = request.dataset.lower().strip()
@@ -52,6 +69,9 @@ def validate_request(request: FullSearchRequest):
 
     if request.top_k <= 0:
         raise HTTPException(status_code=400, detail="top_k must be greater than 0")
+
+    if request.top_k > MAX_TOP_K:
+        raise HTTPException(status_code=400, detail=f"top_k must not exceed {MAX_TOP_K}")
 
     if request.initial_k < request.top_k:
         request.initial_k = request.top_k

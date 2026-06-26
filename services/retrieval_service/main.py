@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 
 from retrieval_core import (
     dataset_bm25_search,
@@ -17,6 +18,29 @@ app = FastAPI(
     version="2.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+
+MAX_QUERY_LENGTH = 2000
+MAX_TOP_K = 100
+
+
+def _validate_query_length(v: str) -> str:
+    if len(v) > MAX_QUERY_LENGTH:
+        raise ValueError(f"query exceeds maximum length of {MAX_QUERY_LENGTH} characters")
+    return v
+
+
+def _validate_top_k(v: int) -> int:
+    if v > MAX_TOP_K:
+        raise ValueError(f"top_k must not exceed {MAX_TOP_K}")
+    return v
+
 
 class DatasetBM25SearchRequest(BaseModel):
     query: str
@@ -25,17 +49,26 @@ class DatasetBM25SearchRequest(BaseModel):
     k1: float = 1.5
     b: float = 0.75
 
+    _check_query = field_validator("query")(_validate_query_length)
+    _check_top_k = field_validator("top_k")(_validate_top_k)
+
 
 class IndexedSearchRequest(BaseModel):
     query: str
     top_k: int = 10
     dataset: str = "quora"
 
+    _check_query = field_validator("query")(_validate_query_length)
+    _check_top_k = field_validator("top_k")(_validate_top_k)
+
 
 class SemanticSearchRequest(BaseModel):
     query: str
     top_k: int = 10
     dataset: str = "quora"
+
+    _check_query = field_validator("query")(_validate_query_length)
+    _check_top_k = field_validator("top_k")(_validate_top_k)
 
 
 class HybridSearchRequest(BaseModel):
@@ -47,6 +80,9 @@ class HybridSearchRequest(BaseModel):
     k1: float = 1.5
     b: float = 0.75
 
+    _check_query = field_validator("query")(_validate_query_length)
+    _check_top_k = field_validator("top_k")(_validate_top_k)
+
 
 class HybridSerialSearchRequest(BaseModel):
     query: str
@@ -55,6 +91,9 @@ class HybridSerialSearchRequest(BaseModel):
     dataset: str = "quora"
     k1: float = 1.5
     b: float = 0.75
+
+    _check_query = field_validator("query")(_validate_query_length)
+    _check_top_k = field_validator("top_k")(_validate_top_k)
 
 
 @app.get("/")

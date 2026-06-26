@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 import re
 import nltk
 from nltk.corpus import stopwords
@@ -10,7 +11,14 @@ nltk.download("stopwords", quiet=True)
 app = FastAPI(
     title="IR Preprocessing Service",
     description="Service for cleaning and preprocessing documents and queries",
-    version="1.0.0"
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 stemmer = PorterStemmer()
@@ -18,11 +26,21 @@ lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words("english"))
 
 
+MAX_TEXT_LENGTH = 50000
+
+
 class TextRequest(BaseModel):
     text: str
     use_stemming: bool = True
     use_lemmatization: bool = False
     remove_stopwords: bool = True
+
+    @field_validator("text")
+    @classmethod
+    def text_not_too_long(cls, v: str) -> str:
+        if len(v) > MAX_TEXT_LENGTH:
+            raise ValueError(f"text exceeds maximum length of {MAX_TEXT_LENGTH} characters")
+        return v
 
 
 def clean_text(text: str) -> str:

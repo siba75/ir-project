@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 from pipeline import (
@@ -21,6 +22,13 @@ app = FastAPI(
     title="IR Gateway Service",
     description="Central gateway for the complete IR pipeline",
     version="2.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 

@@ -5,6 +5,7 @@ import json
 import re
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -14,7 +15,14 @@ QUORA_INDEX_FALLBACK_PATH = BASE_DIR / "indexes" / "quora" / "inverted_index.jso
 app = FastAPI(
     title="IR Indexing Service",
     description="Service for inspecting the prebuilt Quora inverted index",
-    version="2.0.0"
+    version="2.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 
