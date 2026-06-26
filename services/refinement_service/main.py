@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 import re
 import nltk
 from nltk.corpus import stopwords
@@ -10,7 +11,14 @@ nltk.download("stopwords", quiet=True)
 app = FastAPI(
     title="IR Query Refinement Service",
     description="Service for query cleaning, normalization, expansion, and refinement",
-    version="1.0.0"
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8501", "http://localhost:8501"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 stemmer = PorterStemmer()
@@ -42,12 +50,22 @@ SYNONYMS = {
 }
 
 
+MAX_QUERY_LENGTH = 2000
+
+
 class QueryRefinementRequest(BaseModel):
     query: str
     remove_stopwords: bool = True
     use_stemming: bool = False
     use_lemmatization: bool = False
     use_expansion: bool = True
+
+    @field_validator("query")
+    @classmethod
+    def query_not_too_long(cls, v: str) -> str:
+        if len(v) > MAX_QUERY_LENGTH:
+            raise ValueError(f"query exceeds maximum length of {MAX_QUERY_LENGTH} characters")
+        return v
 
 
 def clean_query(query: str) -> str:

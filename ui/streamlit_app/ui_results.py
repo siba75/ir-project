@@ -1,3 +1,5 @@
+import html
+
 import streamlit as st
 
 from ui_helpers import extract_top_terms, get_score_value, highlight_terms
@@ -57,8 +59,9 @@ def render_ranked_results(data, results, config):
     for result in results:
         final_score, bm25_score, semantic_score = result_scores(result, config)
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
+        safe_doc_id = html.escape(str(result['doc_id']))
         st.markdown(
-            f"<div class='doc-title'>Rank {result['rank']} — Document {result['doc_id']}</div>",
+            f"<div class='doc-title'>Rank {result['rank']} — Document {safe_doc_id}</div>",
             unsafe_allow_html=True,
         )
         st.markdown(

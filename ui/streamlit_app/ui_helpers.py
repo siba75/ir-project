@@ -1,3 +1,4 @@
+import html
 import json
 import re
 from pathlib import Path
@@ -83,16 +84,16 @@ def highlight_terms(text, query):
         for term in re.findall(r"\w+", query.lower())
         if len(term) > 2
     ]
-    highlighted = text
+    escaped_text = html.escape(text)
 
     for term in terms:
-        highlighted = re.sub(
+        escaped_text = re.sub(
             f"(?i)({re.escape(term)})",
             r"<span class='highlight'>\1</span>",
-            highlighted,
+            escaped_text,
         )
 
-    return highlighted
+    return escaped_text
 
 
 def get_score_value(item, parallel_key, serial_key):
