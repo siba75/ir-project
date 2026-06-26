@@ -1,10 +1,16 @@
+import sys
 from functools import lru_cache
 from pathlib import Path
 import gzip
 import json
-import re
 
 from fastapi import FastAPI, HTTPException
+
+_SHARED_DIR = str(Path(__file__).resolve().parent.parent / "shared")
+if _SHARED_DIR not in sys.path:
+    sys.path.append(_SHARED_DIR)
+
+from text_cleaning import clean_text  # noqa: E402
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -19,11 +25,7 @@ app = FastAPI(
 
 
 def preprocess_for_indexing(text: str) -> list[str]:
-    text = text.lower()
-    text = re.sub(r"http\S+|www\S+", " ", text)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text.split()
+    return clean_text(text).split()
 
 
 @lru_cache(maxsize=1)
