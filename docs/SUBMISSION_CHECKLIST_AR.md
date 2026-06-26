@@ -31,8 +31,21 @@
   - `rank_bm25.BM25Okapi`
 - TF-IDF مستخدم من مكتبة:
   - `sklearn.feature_extraction.text.TfidfVectorizer`
+  - يستخدم analyzer موحد من المشروع: `text_processing.preprocess_text`
+  - تم إيقاف الاعتماد على preprocessing الافتراضي للمكتبة عبر تمرير callable analyzer.
 - Semantic/vector store:
   - `FAISS`
+
+## Data Processing
+
+- تجهيز البيانات يتم محلياً قبل التشغيل.
+- الوثائق تقرأ من الداتا وتتحول إلى نص موحد عبر `doc_to_text`.
+- إذا كان الدوكيومنت فيه metadata مثل `title`, `text`, `body`, `abstract`, `author` يتم دمج الحقول الموجودة قبل الفهرسة.
+- preprocessing موحد لكل:
+  - BM25
+  - TF-IDF
+  - query matching
+- SQLite document loading يستخدم batch insert بحجم `10000`.
 
 ## Evaluation
 

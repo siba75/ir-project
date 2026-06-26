@@ -1,18 +1,14 @@
 import argparse
 import json
 import pickle
-import re
 from collections import Counter
 from pathlib import Path
 
-import faiss
 import ir_datasets
-import numpy as np
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
-from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import normalize
+
+from text_processing import doc_to_text, iter_batches, preprocess_text, query_to_text
+from vector_builders import build_lsa_vectors, build_transformer_vectors
 
 
 DATASET_CONFIGS = {
@@ -24,60 +20,6 @@ MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATASETS_DIR = BASE_DIR / "datasets"
 INDEXES_DIR = BASE_DIR / "indexes"
-
-
-def preprocess(text):
-    text = text.lower()
-    text = re.sub(r"http\S+|www\S+", " ", text)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text.split()
-
-
-def field_to_text(value):
-    if value is None:
-        return ""
-
-    if isinstance(value, (list, tuple)):
-        return " ".join(field_to_text(item) for item in value)
-
-    return str(value)
-
-
-def doc_to_text(doc):
-    parts = []
-
-    for field_name in [
-        "title",
-        "text",
-        "body",
-        "abstract",
-        "summary",
-        "detailed_description",
-        "brief_title",
-        "brief_summary",
-        "condition",
-        "intervention",
-    ]:
-        if hasattr(doc, field_name):
-            value = field_to_text(getattr(doc, field_name))
-            if value:
-                parts.append(value)
-
-    if not parts:
-        parts.append(str(doc))
-
-    return " ".join(parts)
-
-
-def query_to_text(query):
-    for field_name in ["text", "title", "description", "query"]:
-        if hasattr(query, field_name):
-            value = field_to_text(getattr(query, field_name))
-            if value:
-                return value
-
-    return str(query)
 
 
 def get_query_id(query):
@@ -103,79 +45,6 @@ def save_json(path, data):
         json.dump(data, file, ensure_ascii=False)
 
 
-def build_lsa_vectors(alias, documents, doc_ids, output_index_dir, n_components=256):
-    print("Building LSA dense vector index")
-    print("TF-IDF max_features: 50000")
-    print("SVD components:", n_components)
-
-    vectorizer = TfidfVectorizer(
-        max_features=50000,
-        stop_words="english",
-        lowercase=True,
-    )
-    tfidf_matrix = vectorizer.fit_transform(documents)
-
-    svd = TruncatedSVD(
-        n_components=n_components,
-        random_state=42,
-    )
-    dense_vectors = svd.fit_transform(tfidf_matrix)
-    dense_vectors = normalize(dense_vectors).astype("float32")
-
-    dimension = dense_vectors.shape[1]
-    index = faiss.IndexFlatIP(dimension)
-    index.add(dense_vectors)
-    faiss.write_index(index, str(output_index_dir / "faiss.index"))
-
-    metadata = {
-        "dataset": alias,
-        "source_dataset": DATASET_CONFIGS[alias],
-        "vector_method": "lsa_tfidf_svd",
-        "doc_ids": doc_ids,
-        "documents": documents,
-        "total_documents": len(documents),
-        "embedding_dimension": int(dimension),
-        "vectorizer": vectorizer,
-        "svd": svd,
-    }
-
-    with open(output_index_dir / "metadata.pkl", "wb") as file:
-        pickle.dump(metadata, file)
-
-
-def build_transformer_vectors(alias, documents, doc_ids, output_index_dir, batch_size=64):
-    print("Building SentenceTransformer FAISS vector index")
-    model = SentenceTransformer(MODEL_NAME)
-
-    embeddings = model.encode(
-        documents,
-        batch_size=batch_size,
-        show_progress_bar=True,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    ).astype("float32")
-
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dimension)
-    index.add(embeddings)
-    faiss.write_index(index, str(output_index_dir / "faiss.index"))
-
-    metadata = {
-        "dataset": alias,
-        "source_dataset": DATASET_CONFIGS[alias],
-        "vector_method": "sentence_transformer",
-        "vector_method_alias": "transformer",
-        "model_name": MODEL_NAME,
-        "doc_ids": doc_ids,
-        "documents": documents,
-        "total_documents": len(documents),
-        "embedding_dimension": int(dimension),
-    }
-
-    with open(output_index_dir / "metadata.pkl", "wb") as file:
-        pickle.dump(metadata, file)
-
-
 def build_resources(alias, build_vectors=True, batch_size=64, vector_method="lsa"):
     dataset_id = DATASET_CONFIGS[alias]
     dataset = ir_datasets.load(dataset_id)
@@ -193,23 +62,26 @@ def build_resources(alias, build_vectors=True, batch_size=64, vector_method="lsa
     document_lengths = {}
     tokenized_documents = []
 
-    for index, doc in enumerate(dataset.docs_iter(), start=1):
-        doc_id = get_doc_id(doc)
-        text = doc_to_text(doc)
-        tokens = preprocess(text)
+    loaded_documents = 0
 
-        doc_ids.append(doc_id)
-        documents.append(text)
-        document_lengths[doc_id] = len(tokens)
-        tokenized_documents.append(tokens)
+    for batch in iter_batches(dataset.docs_iter(), batch_size=10000):
+        for doc in batch:
+            doc_id = get_doc_id(doc)
+            text = doc_to_text(doc)
+            tokens = preprocess_text(text)
 
-        for term, frequency in Counter(tokens).items():
-            if term not in inverted_index:
-                inverted_index[term] = {}
-            inverted_index[term][doc_id] = frequency
+            doc_ids.append(doc_id)
+            documents.append(text)
+            document_lengths[doc_id] = len(tokens)
+            tokenized_documents.append(tokens)
 
-        if index % 10000 == 0:
-            print(f"Loaded documents: {index}")
+            for term, frequency in Counter(tokens).items():
+                if term not in inverted_index:
+                    inverted_index[term] = {}
+                inverted_index[term][doc_id] = frequency
+
+        loaded_documents += len(batch)
+        print(f"Loaded documents: {loaded_documents}")
 
     print("Loading queries")
     queries = {
@@ -260,9 +132,23 @@ def build_resources(alias, build_vectors=True, batch_size=64, vector_method="lsa
 
     if build_vectors:
         if vector_method == "transformer":
-            build_transformer_vectors(alias, documents, doc_ids, output_index_dir, batch_size)
+            build_transformer_vectors(
+                alias,
+                DATASET_CONFIGS[alias],
+                MODEL_NAME,
+                documents,
+                doc_ids,
+                output_index_dir,
+                batch_size,
+            )
         else:
-            build_lsa_vectors(alias, documents, doc_ids, output_index_dir)
+            build_lsa_vectors(
+                alias,
+                DATASET_CONFIGS[alias],
+                documents,
+                doc_ids,
+                output_index_dir,
+            )
 
     print("Done")
     print("Dataset:", alias)
@@ -292,9 +178,23 @@ def build_vectors_only(alias, batch_size=64, vector_method="lsa"):
     print("Documents:", len(documents))
 
     if vector_method == "transformer":
-        build_transformer_vectors(alias, documents, doc_ids, output_index_dir, batch_size)
+        build_transformer_vectors(
+            alias,
+            DATASET_CONFIGS[alias],
+            MODEL_NAME,
+            documents,
+            doc_ids,
+            output_index_dir,
+            batch_size,
+        )
     else:
-        build_lsa_vectors(alias, documents, doc_ids, output_index_dir)
+        build_lsa_vectors(
+            alias,
+            DATASET_CONFIGS[alias],
+            documents,
+            doc_ids,
+            output_index_dir,
+        )
 
     print("Vector resources saved")
 

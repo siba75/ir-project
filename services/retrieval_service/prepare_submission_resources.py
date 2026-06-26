@@ -7,6 +7,8 @@ from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from text_processing import iter_batches, preprocess_text
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATASET = "quora"
@@ -36,7 +38,7 @@ def load_bm25_data():
         return pickle.load(file)
 
 
-def build_documents_database(doc_ids, documents):
+def build_documents_database(doc_ids, documents, batch_size=10000):
     print("Building SQLite document store")
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -50,25 +52,24 @@ def build_documents_database(doc_ids, documents):
             """
         )
         connection.execute("DELETE FROM documents")
-        connection.executemany(
-            "INSERT INTO documents (doc_id, content) VALUES (?, ?)",
-            ((str(doc_id), text) for doc_id, text in zip(doc_ids, documents)),
-        )
+        rows = ((str(doc_id), text) for doc_id, text in zip(doc_ids, documents))
+
+        for batch in iter_batches(rows, batch_size=batch_size):
+            connection.executemany(
+                "INSERT INTO documents (doc_id, content) VALUES (?, ?)",
+                batch,
+            )
+
         connection.commit()
 
     print(f"Saved {len(doc_ids)} documents to {DB_PATH}")
 
 
 def build_tfidf_resource(documents, doc_ids):
-    if TFIDF_PATH.exists():
-        print(f"TF-IDF resource already exists: {TFIDF_PATH}")
-        return
-
     print("Building sklearn TF-IDF resource")
     vectorizer = TfidfVectorizer(
         max_features=50000,
-        stop_words="english",
-        lowercase=True,
+        analyzer=preprocess_text,
         norm="l2",
     )
     matrix = vectorizer.fit_transform(documents)
@@ -77,6 +78,11 @@ def build_tfidf_resource(documents, doc_ids):
         "dataset": DATASET,
         "source_dataset": "beir/quora/test",
         "model": "sklearn.feature_extraction.text.TfidfVectorizer",
+        "preprocessing": "text_processing.preprocess_text",
+        "batch_processing": {
+            "sqlite_insert_batch_size": 10000,
+            "resource_building": "documents are streamed from prepared local resources",
+        },
         "vectorizer": vectorizer,
         "matrix": matrix,
         "doc_ids": [str(doc_id) for doc_id in doc_ids],
@@ -104,7 +110,9 @@ def write_manifest():
         "notes": [
             "Documents are stored in SQLite and fetched by doc_id for display.",
             "BM25 uses rank_bm25.BM25Okapi.",
-            "TF-IDF uses sklearn TfidfVectorizer.",
+            "TF-IDF uses sklearn TfidfVectorizer with the shared project preprocessing analyzer.",
+            "SQLite document loading uses batch processing.",
+            "Dataset document fields such as title/text/body/abstract are merged before modeling when present.",
             "FAISS is loaded from a compressed index through a runtime cache file.",
         ],
     }
