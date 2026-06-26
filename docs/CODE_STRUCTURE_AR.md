@@ -120,10 +120,23 @@
 
 واجهة النظام المركزية:
 - يستقبل طلب البحث من الواجهة.
+- يعرّف FastAPI endpoints.
+- ينسق بين refinement وretrieval ويعيد response موحد.
+
+### `services/gateway_service/schemas.py`
+
+تعريف طلب البحث والتحقق من القيم:
+- dataset ثابت `quora`.
+- retrieval modes.
+- BM25 parameters.
+- hybrid weights.
+
+### `services/gateway_service/pipeline.py`
+
+خطوات الـ Gateway pipeline:
 - يتحقق من parameters.
 - يستدعي refinement service.
 - يطبق personalization إذا مفعلة.
-- يختار retrieval strategy.
 - يرجع response موحد للواجهة.
 
 ### `services/gateway_service/retrieval_strategies.py`
