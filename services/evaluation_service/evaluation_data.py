@@ -1,6 +1,9 @@
 import json
+import logging
 
 from evaluation_config import EVALUATION_RUNS, SEARCH_MODES
+
+logger = logging.getLogger(__name__)
 
 
 def load_queries_and_qrels(base_dir, dataset_name):
@@ -44,6 +47,11 @@ def build_pending_items(query_ids, queries, qrels, completed_set, history_size):
         relevant_docs = qrels.get(query_id, [])
 
         if not query_text or not relevant_docs:
+            logger.debug(
+                "Skipping query_id=%s: missing %s",
+                query_id,
+                "query text" if not query_text else "relevant docs",
+            )
             continue
 
         items.append({

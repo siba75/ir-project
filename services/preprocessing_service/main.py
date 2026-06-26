@@ -1,9 +1,13 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+import logging
 import re
+
 import nltk
+from fastapi import FastAPI
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 nltk.download("stopwords", quiet=True)
 
@@ -49,7 +53,8 @@ def lemmatize_tokens(tokens: list[str]) -> list[str]:
 
     try:
         return [lemmatizer.lemmatize(token) for token in tokens]
-    except Exception:
+    except LookupError as exc:
+        logger.warning("WordNet resource missing, using fallback lemmatizer: %s", exc)
         return [fallback_lemma(token) for token in tokens]
 
 

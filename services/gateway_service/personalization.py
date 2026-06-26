@@ -1,7 +1,10 @@
+import logging
 import re
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_PROFILE = {
@@ -81,7 +84,8 @@ def build_personalized_query(refined_query: str, user_history: list[str]):
             lowercase=True,
         )
         matrix = vectorizer.fit_transform(corpus)
-    except ValueError:
+    except ValueError as exc:
+        logger.warning("Personalization skipped, vectorizer failed: %s", exc)
         return refined_query, [], empty_profile()
 
     history_matrix = matrix[:-1]

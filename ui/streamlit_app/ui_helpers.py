@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -6,6 +7,8 @@ import pandas as pd
 import requests
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+logger = logging.getLogger(__name__)
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -18,8 +21,11 @@ def load_evaluation_results():
     for report_path in REPORTS_DIR.glob("*_evaluation_results.json"):
         dataset_name = report_path.name.replace("_evaluation_results.json", "")
 
-        with open(report_path, "r", encoding="utf-8") as file:
-            results[dataset_name] = json.load(file)
+        try:
+            with open(report_path, "r", encoding="utf-8") as file:
+                results[dataset_name] = json.load(file)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load evaluation report %s: %s", report_path, exc)
 
     return results
 
@@ -67,7 +73,13 @@ def check_service(url):
     try:
         response = requests.get(url, timeout=3)
         return response.status_code == 200
-    except Exception:
+    except requests.ConnectionError:
+        return False
+    except requests.Timeout:
+        logger.debug("Service health check timed out: %s", url)
+        return False
+    except requests.RequestException as exc:
+        logger.warning("Service health check failed for %s: %s", url, exc)
         return False
 
 

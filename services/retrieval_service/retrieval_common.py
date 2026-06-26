@@ -1,4 +1,8 @@
+import logging
+
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 
 VECTOR_METHOD_ALIASES = {
@@ -52,6 +56,7 @@ def get_doc_text(doc_id: str, resources):
         position = doc_ids.index(str(doc_id))
         return metadata["documents"][position]
     except (ValueError, KeyError, IndexError):
+        logger.debug("Document text not found for doc_id=%s", doc_id)
         return ""
 
 

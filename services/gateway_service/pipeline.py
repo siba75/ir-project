@@ -1,8 +1,12 @@
-from fastapi import HTTPException
+import logging
+
 import httpx
+from fastapi import HTTPException
 
 from personalization import build_personalized_query, empty_profile
 from schemas import FullSearchRequest
+
+logger = logging.getLogger(__name__)
 
 
 REFINEMENT_SERVICE_URL = "http://127.0.0.1:8005/refine"
@@ -21,12 +25,38 @@ def build_refinement_payload(request: FullSearchRequest):
 async def post_json(client: httpx.AsyncClient, url: str, payload: dict, label: str):
     try:
         response = await client.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()
-    except Exception as error:
+    except httpx.ConnectError as exc:
+        logger.error("%s service unreachable at %s: %s", label, url, exc)
         raise HTTPException(
-            status_code=500,
-            detail=f"{label} service error: {str(error)}",
+            status_code=502,
+            detail=f"{label} service is unreachable at {url}",
+        )
+    except httpx.TimeoutException as exc:
+        logger.error("%s service timed out at %s: %s", label, url, exc)
+        raise HTTPException(
+            status_code=504,
+            detail=f"{label} service timed out",
+        )
+
+    if response.status_code >= 400:
+        logger.error(
+            "%s service returned HTTP %d: %s",
+            label,
+            response.status_code,
+            response.text[:500],
+        )
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"{label} service returned HTTP {response.status_code}: {response.text[:200]}",
+        )
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        logger.error("%s service returned invalid JSON: %s", label, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"{label} service returned invalid JSON",
         )
 
 
