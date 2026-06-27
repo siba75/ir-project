@@ -1,10 +1,13 @@
-from functools import lru_cache
-from pathlib import Path
 import gzip
 import json
+import logging
 import re
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+
+logger = logging.getLogger(__name__)
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -38,8 +41,21 @@ def load_quora_index():
 
     opener = gzip.open if index_path.suffix == ".gz" else open
 
-    with opener(index_path, "rt", encoding="utf-8") as file:
-        return json.load(file)
+    try:
+        with opener(index_path, "rt", encoding="utf-8") as file:
+            return json.load(file)
+    except (json.JSONDecodeError, gzip.BadGzipFile) as exc:
+        logger.error("Corrupt index file %s: %s", index_path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Index file is corrupt: {index_path.name}",
+        ) from exc
+    except OSError as exc:
+        logger.error("Cannot read index file %s: %s", index_path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot read index file: {index_path.name}",
+        ) from exc
 
 
 @app.get("/")

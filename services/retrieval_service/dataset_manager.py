@@ -1,11 +1,14 @@
-import faiss
 import gzip
+import logging
 import pickle
 import shutil
 import sqlite3
 from pathlib import Path
 
+import faiss
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 INDEXES_DIR = BASE_DIR / "indexes"
@@ -63,12 +66,25 @@ def compressed_path_exists(config, resource_name):
 
 
 def load_pickle(path: Path):
-    if path.suffix == ".gz":
-        with gzip.open(path, "rb") as file:
-            return pickle.load(file)
+    try:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as file:
+                return pickle.load(file)
 
-    with open(path, "rb") as file:
-        return pickle.load(file)
+        with open(path, "rb") as file:
+            return pickle.load(file)
+    except (pickle.UnpicklingError, gzip.BadGzipFile, EOFError) as exc:
+        logger.error("Corrupt or unreadable file %s: %s", path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load resource from {path.name}: file is corrupt",
+        ) from exc
+    except OSError as exc:
+        logger.error("Cannot read file %s: %s", path, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot read resource file {path.name}",
+        ) from exc
 
 
 def materialize_gzip(path: Path, dataset_name: str):

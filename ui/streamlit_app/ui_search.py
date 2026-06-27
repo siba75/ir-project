@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime
 
@@ -5,6 +6,8 @@ import requests
 import streamlit as st
 
 from ui_config import GATEWAY_URL
+
+logger = logging.getLogger(__name__)
 
 
 def render_header():
@@ -52,15 +55,24 @@ def run_search(query, config):
 
             if response.status_code != 200:
                 st.error(
-                    "Search failed. Make sure Gateway, Retrieval, and Refinement services are running."
+                    f"Search failed (HTTP {response.status_code}). "
+                    "Make sure Gateway, Retrieval, and Refinement services are running."
                 )
                 st.code(response.text)
                 return
 
             store_successful_search(query, response.json(), elapsed_time, config)
             st.success("Search completed successfully")
-        except Exception as error:
-            st.error(f"Connection error: {error}")
+        except requests.ConnectionError:
+            st.error(
+                "Cannot connect to the Gateway service. "
+                "Make sure all services are running (run_services.bat)."
+            )
+        except requests.Timeout:
+            st.error("Search request timed out. The server may be overloaded.")
+        except requests.RequestException as error:
+            logger.error("Search request failed: %s", error)
+            st.error(f"Search request failed: {error}")
 
 
 def build_search_payload(query, config):
