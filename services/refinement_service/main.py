@@ -1,25 +1,29 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import re
-import nltk
 import importlib.resources as resources
-from nltk.corpus import stopwords, wordnet as wn
-from nltk.stem import PorterStemmer, WordNetLemmatizer
+import re
+import sys
+from pathlib import Path
+
+import nltk
+from fastapi import FastAPI, HTTPException
+from nltk.corpus import wordnet as wn
+from pydantic import BaseModel
 from symspellpy import SymSpell, Verbosity
 
-nltk.download("stopwords", quiet=True)
 nltk.download("wordnet", quiet=True)
 nltk.download("omw-1.4", quiet=True)
+
+_SHARED_DIR = str(Path(__file__).resolve().parent.parent / "shared")
+if _SHARED_DIR not in sys.path:
+    sys.path.append(_SHARED_DIR)
+
+from nlp_utils import lemmatizer, stemmer, stop_words  # noqa: E402
+from text_cleaning import clean_text  # noqa: E402
 
 app = FastAPI(
     title="IR Query Refinement Service",
     description="Service for query cleaning, spelling correction, WordNet query expansion, and refinement",
     version="2.0.0"
 )
-
-stemmer = PorterStemmer()
-lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words("english"))
 
 sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
 
@@ -53,14 +57,6 @@ class QueryRefinementRequest(BaseModel):
     max_expansion_terms_per_token: int = 2
 
 
-def clean_query(query: str) -> str:
-    query = query.lower()
-    query = re.sub(r"http\S+|www\S+", " ", query)
-    query = re.sub(r"[^a-z0-9\s]", " ", query)
-    query = re.sub(r"\s+", " ", query).strip()
-    return query
-
-
 def normalize_repeated_letters(token: str) -> str:
     """
     Reduce exaggerated repeated letters before spell correction.
@@ -79,7 +75,6 @@ def should_skip_spelling_correction(token: str) -> bool:
     if len(token) <= 2:
         return True
 
-    # Keep terms that contain numbers unchanged, مثل bm25 / ndcg10
     if any(char.isdigit() for char in token):
         return True
 
@@ -218,7 +213,7 @@ def refine_query(
     use_spelling_correction: bool = True,
     max_expansion_terms_per_token: int = 2
 ):
-    cleaned_query = clean_query(query)
+    cleaned_query = clean_text(query)
 
     if not cleaned_query:
         raise HTTPException(status_code=400, detail="Query is empty after cleaning")

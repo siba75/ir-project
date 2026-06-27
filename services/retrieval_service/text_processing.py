@@ -1,4 +1,11 @@
-import re
+import sys
+from pathlib import Path
+
+_SHARED_DIR = str(Path(__file__).resolve().parent.parent / "shared")
+if _SHARED_DIR not in sys.path:
+    sys.path.append(_SHARED_DIR)
+
+from text_cleaning import clean_text  # noqa: E402
 
 
 DOCUMENT_TEXT_FIELDS = [
@@ -17,11 +24,7 @@ DOCUMENT_TEXT_FIELDS = [
 
 
 def preprocess_text(text: str) -> list[str]:
-    text = str(text).lower()
-    text = re.sub(r"http\S+|www\S+", " ", text)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text.split()
+    return clean_text(text).split()
 
 
 def field_to_text(value):
