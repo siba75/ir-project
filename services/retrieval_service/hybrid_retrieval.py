@@ -24,7 +24,7 @@ def hybrid_search(
     validate_query(query)
     validate_bm25_parameters(k1, b)
     validate_hybrid_weights(bm25_weight, semantic_weight)
-    resources = load_dataset_resources(dataset)
+    resources = load_dataset_resources(dataset, include_vector=True)
     query_tokens = tokenize_query(query)
 
     if not query_tokens:
@@ -68,7 +68,7 @@ def hybrid_serial_search(
     validate_bm25_parameters(k1, b)
     validate_serial_parameters(top_k, initial_k)
     initial_k = max(initial_k, top_k)
-    resources = load_dataset_resources(dataset)
+    resources = load_dataset_resources(dataset, include_vector=True)
     query_tokens = tokenize_query(query)
 
     if not query_tokens:

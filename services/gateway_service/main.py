@@ -4,6 +4,7 @@ import httpx
 from pipeline import (
     REFINEMENT_SERVICE_URL,
     apply_personalization,
+    build_personalized_query,
     build_full_response,
     build_refinement_payload,
     post_json,

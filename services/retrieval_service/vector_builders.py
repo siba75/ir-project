@@ -1,7 +1,6 @@
 import pickle
 
 import faiss
-from sentence_transformers import SentenceTransformer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
@@ -65,6 +64,8 @@ def build_transformer_vectors(
     batch_size=64,
 ):
     print("Building SentenceTransformer FAISS vector index")
+    from sentence_transformers import SentenceTransformer
+
     model = SentenceTransformer(model_name)
 
     embeddings = model.encode(

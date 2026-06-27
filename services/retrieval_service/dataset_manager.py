@@ -101,9 +101,11 @@ class DocumentStore:
         return row[0] if row else ""
 
 
-def load_generic_resources(dataset_name: str):
-    if dataset_name in _resource_cache:
-        return _resource_cache[dataset_name]
+def load_generic_resources(dataset_name: str, include_vector: bool = False):
+    cache_key = (dataset_name, include_vector)
+
+    if cache_key in _resource_cache:
+        return _resource_cache[cache_key]
 
     config = SUPPORTED_DATASETS[dataset_name]
     document_db_path = config["document_db_path"]
@@ -115,9 +117,6 @@ def load_generic_resources(dataset_name: str):
         )
 
     bm25_path = preferred_existing_path(config, "bm25_path")
-    faiss_path = preferred_existing_path(config, "faiss_index_path")
-    faiss_compressed_path = config["faiss_compressed_path"]
-    metadata_path = preferred_existing_path(config, "vector_metadata_path")
     tfidf_path = config["tfidf_path"]
 
     if not tfidf_path.exists():
@@ -126,15 +125,7 @@ def load_generic_resources(dataset_name: str):
             detail=f"TF-IDF resource not found at {tfidf_path}. Run prepare_submission_resources.py."
         )
 
-    if not faiss_compressed_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Compressed FAISS resource not found at {faiss_compressed_path}. Run prepare_submission_resources.py."
-        )
-
     bm25_data = load_pickle(bm25_path)
-    faiss_index = faiss.read_index(str(materialize_gzip(faiss_path, dataset_name)))
-    metadata = load_pickle(metadata_path)
     tfidf_data = load_pickle(tfidf_path)
 
     doc_ids = bm25_data["doc_ids"]
@@ -147,34 +138,52 @@ def load_generic_resources(dataset_name: str):
         "bm25": bm25_data["bm25"],
         "doc_ids": doc_ids,
         "tfidf": tfidf_data,
-        "faiss_index": faiss_index,
-        "metadata": metadata,
         "resource_paths": {
             "document_db": str(document_db_path),
             "bm25": str(bm25_path),
             "tfidf": str(tfidf_path),
-            "faiss": str(faiss_path),
-            "faiss_compressed": str(faiss_compressed_path),
-            "metadata": str(metadata_path),
         },
         "storage": {
             "documents_in_sqlite": True,
-            "compressed_indexes": (
-                bm25_path.suffix == ".gz"
-                and faiss_compressed_path.suffix == ".gz"
-                and faiss_compressed_path.exists()
-                and metadata_path.suffix == ".gz"
-                and tfidf_path.suffix == ".gz"
-            ),
+            "compressed_indexes": bm25_path.suffix == ".gz" and tfidf_path.suffix == ".gz",
             "resource_cache": True,
         },
         "total_documents": len(doc_ids),
     }
 
-    _resource_cache[dataset_name] = resources
+    if include_vector:
+        add_vector_resources(resources, config, dataset_name)
+
+    _resource_cache[cache_key] = resources
     return resources
 
 
-def load_dataset_resources(dataset_name: str):
+def add_vector_resources(resources: dict, config: dict, dataset_name: str):
+    faiss_path = preferred_existing_path(config, "faiss_index_path")
+    faiss_compressed_path = config["faiss_compressed_path"]
+    metadata_path = preferred_existing_path(config, "vector_metadata_path")
+
+    if not faiss_compressed_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Compressed FAISS resource not found at {faiss_compressed_path}. Run prepare_submission_resources.py."
+        )
+
+    resources["faiss_index"] = faiss.read_index(str(materialize_gzip(faiss_path, dataset_name)))
+    resources["metadata"] = load_pickle(metadata_path)
+    resources["resource_paths"].update({
+        "faiss": str(faiss_path),
+        "faiss_compressed": str(faiss_compressed_path),
+        "metadata": str(metadata_path),
+    })
+    resources["storage"]["compressed_indexes"] = (
+        resources["storage"]["compressed_indexes"]
+        and faiss_compressed_path.suffix == ".gz"
+        and faiss_compressed_path.exists()
+        and metadata_path.suffix == ".gz"
+    )
+
+
+def load_dataset_resources(dataset_name: str, include_vector: bool = False):
     dataset_name = validate_dataset(dataset_name)
-    return load_generic_resources(dataset_name)
+    return load_generic_resources(dataset_name, include_vector=include_vector)

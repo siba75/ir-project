@@ -111,7 +111,7 @@ def get_vector_method(resources):
 def semantic_search(query: str, top_k: int, dataset: str):
     dataset = validate_dataset(dataset)
     validate_query(query)
-    resources = load_dataset_resources(dataset)
+    resources = load_dataset_resources(dataset, include_vector=True)
     metadata = resources.get("metadata", {})
     scores = semantic_scores(query, resources, top_k)
     ranked_results = sorted(scores.items(), key=lambda item: item[1], reverse=True)
