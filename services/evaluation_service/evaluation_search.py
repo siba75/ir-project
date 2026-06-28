@@ -30,7 +30,7 @@ def run_search(mode, query_text, dataset_name):
         return hybrid_search(query_text, TOP_K, 0.4, 0.6, dataset_name)
 
     if mode == "hybrid_serial":
-        return hybrid_serial_search(query_text, TOP_K, 50, dataset_name)
+        return hybrid_serial_search(query_text, TOP_K, 20,dataset_name)
 
     raise ValueError(f"Unsupported search mode: {mode}")
 

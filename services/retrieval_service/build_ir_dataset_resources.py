@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument(
         "--vector-method",
         choices=["lsa", "transformer"],
-        default="lsa",
+        default="transformer",
         help="Use lsa for fast dense TF-IDF+SVD embeddings or transformer for SentenceTransformer embeddings.",
     )
     return parser.parse_args()

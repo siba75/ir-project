@@ -6,6 +6,8 @@
   "total_qrel_judgments": 15675,
   "evaluated_queries": 10000,
   "top_k": 10,
+  "workers": 3,
+  "history_size": 5,
   "before_features": {
     "tfidf": {
       "dataset": "quora",
@@ -16,7 +18,8 @@
       "mean_recall@10": 0.5516,
       "mrr": 0.3372,
       "map": 0.3147,
-      "ndcg@10": 0.3791
+      "ndcg@10": 0.3791,
+      "description": "Core tfidf retrieval before additional features."
     },
     "bm25": {
       "dataset": "quora",
@@ -27,7 +30,8 @@
       "mean_recall@10": 0.8458,
       "mrr": 0.7382,
       "map": 0.6925,
-      "ndcg@10": 0.7436
+      "ndcg@10": 0.7436,
+      "description": "Core bm25 retrieval before additional features."
     },
     "semantic": {
       "dataset": "quora",
@@ -38,7 +42,8 @@
       "mean_recall@10": 0.9503,
       "mrr": 0.8673,
       "map": 0.8363,
-      "ndcg@10": 0.8754
+      "ndcg@10": 0.8754,
+      "description": "Core semantic retrieval before additional features."
     },
     "hybrid_parallel": {
       "dataset": "quora",
@@ -49,7 +54,8 @@
       "mean_recall@10": 0.9479,
       "mrr": 0.8573,
       "map": 0.8224,
-      "ndcg@10": 0.8654
+      "ndcg@10": 0.8654,
+      "description": "Core hybrid_parallel retrieval before additional features."
     },
     "hybrid_serial": {
       "dataset": "quora",
@@ -60,7 +66,8 @@
       "mean_recall@10": 0.9121,
       "mrr": 0.8542,
       "map": 0.8156,
-      "ndcg@10": 0.852
+      "ndcg@10": 0.852,
+      "description": "Core hybrid_serial retrieval before additional features."
     }
   },
   "after_features": {
@@ -69,96 +76,101 @@
       "retrieval_mode": "tfidf",
       "phase": "after_features",
       "evaluated_queries": 10000,
-      "mean_precision@10": 0.0685,
-      "mean_recall@10": 0.5434,
-      "mrr": 0.3316,
-      "map": 0.3096,
-      "ndcg@10": 0.3731
+      "mean_precision@10": 0.0316,
+      "mean_recall@10": 0.2586,
+      "mrr": 0.129,
+      "map": 0.1208,
+      "ndcg@10": 0.1562,
+      "description": "tfidf retrieval after enabling personalization. Semantic and hybrid modes also use the FAISS vector store."
     },
     "bm25": {
       "dataset": "quora",
       "retrieval_mode": "bm25",
       "phase": "after_features",
       "evaluated_queries": 10000,
-      "mean_precision@10": 0.1125,
-      "mean_recall@10": 0.8431,
-      "mrr": 0.7336,
-      "map": 0.6882,
-      "ndcg@10": 0.7396
+      "mean_precision@10": 0.0468,
+      "mean_recall@10": 0.3761,
+      "mrr": 0.2196,
+      "map": 0.2041,
+      "ndcg@10": 0.2503,
+      "description": "bm25 retrieval after enabling personalization. Semantic and hybrid modes also use the FAISS vector store."
     },
     "semantic": {
       "dataset": "quora",
       "retrieval_mode": "semantic",
       "phase": "after_features",
       "evaluated_queries": 10000,
-      "mean_precision@10": 0.1335,
-      "mean_recall@10": 0.9487,
-      "mrr": 0.8633,
-      "map": 0.8328,
-      "ndcg@10": 0.8723
+      "mean_precision@10": 0.1192,
+      "mean_recall@10": 0.8623,
+      "mrr": 0.7344,
+      "map": 0.7034,
+      "ndcg@10": 0.7533,
+      "description": "semantic retrieval after enabling personalization. Semantic and hybrid modes also use the FAISS vector store."
     },
     "hybrid_parallel": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_parallel",
       "phase": "after_features",
       "evaluated_queries": 10000,
-      "mean_precision@10": 0.1318,
-      "mean_recall@10": 0.9465,
-      "mrr": 0.8556,
-      "map": 0.8203,
-      "ndcg@10": 0.8636
+      "mean_precision@10": 0.1181,
+      "mean_recall@10": 0.8607,
+      "mrr": 0.6739,
+      "map": 0.6441,
+      "ndcg@10": 0.7082,
+      "description": "hybrid_parallel retrieval after enabling personalization. Semantic and hybrid modes also use the FAISS vector store."
     },
     "hybrid_serial": {
       "dataset": "quora",
       "retrieval_mode": "hybrid_serial",
       "phase": "after_features",
       "evaluated_queries": 10000,
-      "mean_precision@10": 0.1257,
-      "mean_recall@10": 0.9091,
-      "mrr": 0.8505,
-      "map": 0.8119,
-      "ndcg@10": 0.8484
+      "mean_precision@10": 0.0601,
+      "mean_recall@10": 0.4666,
+      "mrr": 0.4602,
+      "map": 0.4259,
+      "ndcg@10": 0.445,
+      "description": "hybrid_serial retrieval after enabling personalization. Semantic and hybrid modes also use the FAISS vector store."
     }
   },
   "comparison": {
     "tfidf": {
-      "precision@10_delta": -0.0011,
-      "recall@10_delta": -0.0082,
-      "mrr_delta": -0.0056,
-      "map_delta": -0.0051,
-      "ndcg@10_delta": -0.006
+      "precision@10_delta": -0.038,
+      "recall@10_delta": -0.293,
+      "mrr_delta": -0.2082,
+      "map_delta": -0.1939,
+      "ndcg@10_delta": -0.2229
     },
     "bm25": {
-      "precision@10_delta": -0.0006,
-      "recall@10_delta": -0.0027,
-      "mrr_delta": -0.0046,
-      "map_delta": -0.0043,
-      "ndcg@10_delta": -0.004
+      "precision@10_delta": -0.0663,
+      "recall@10_delta": -0.4697,
+      "mrr_delta": -0.5186,
+      "map_delta": -0.4884,
+      "ndcg@10_delta": -0.4933
     },
     "semantic": {
-      "precision@10_delta": -0.0002,
-      "recall@10_delta": -0.0016,
-      "mrr_delta": -0.004,
-      "map_delta": -0.0035,
-      "ndcg@10_delta": -0.0031
+      "precision@10_delta": -0.0145,
+      "recall@10_delta": -0.088,
+      "mrr_delta": -0.1329,
+      "map_delta": -0.1329,
+      "ndcg@10_delta": -0.1221
     },
     "hybrid_parallel": {
-      "precision@10_delta": -0.0002,
-      "recall@10_delta": -0.0014,
-      "mrr_delta": -0.0017,
-      "map_delta": -0.0021,
-      "ndcg@10_delta": -0.0018
+      "precision@10_delta": -0.0139,
+      "recall@10_delta": -0.0872,
+      "mrr_delta": -0.1834,
+      "map_delta": -0.1783,
+      "ndcg@10_delta": -0.1572
     },
     "hybrid_serial": {
-      "precision@10_delta": -0.0005,
-      "recall@10_delta": -0.003,
-      "mrr_delta": -0.0037,
-      "map_delta": -0.0037,
-      "ndcg@10_delta": -0.0036
+      "precision@10_delta": -0.0661,
+      "recall@10_delta": -0.4455,
+      "mrr_delta": -0.394,
+      "map_delta": -0.3897,
+      "ndcg@10_delta": -0.407
     }
   },
   "feature_notes": {
-    "before_features": "Raw benchmark queries with core retrieval models.",
-    "after_features": "Queries expanded with the query refinement feature. FAISS vector store is used by semantic and hybrid models. UI personalization and result clustering are interactive features and are documented separately."
+    "before_features": "Core retrieval modes without personalization.",
+    "after_features": "Personalization is applied to all modes using recent query history. Semantic and hybrid modes also demonstrate the FAISS vector store feature."
   }
 }

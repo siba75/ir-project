@@ -91,8 +91,12 @@ def evaluate_run(
 
     print_run_header(dataset_name, run_name, completed_query_ids, pending, workers)
     warm_resources(dataset_name, run_name)
-
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as executor:
+    # 🔥 IMPORTANT SPEED OPTIMIZATION
+    # خفف الضغط على الجهاز
+    
+    safe_workers = min(2,workers)
+    
+    with ThreadPoolExecutor(max_workers=safe_workers) as executor:
         futures = [
             executor.submit(
                 run_evaluation_item,
